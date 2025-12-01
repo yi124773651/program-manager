@@ -2,6 +2,10 @@
 
 A modern, lightweight application launcher built with Tauri + Vue 3.
 
+![](D:\open-source-project\program-manager\Snipaste_2025-12-01_18-48-06.png)
+
+![](D:\open-source-project\program-manager\Snipaste_2025-12-01_18-48-36.png)
+
 ## Features
 
 - **Lightweight** - Only 3-5MB installer, 90% smaller than Electron apps
