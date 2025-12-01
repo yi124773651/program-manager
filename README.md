@@ -2,9 +2,13 @@
 
 A modern, lightweight application launcher built with Tauri + Vue 3.
 
-![](D:\open-source-project\program-manager\Snipaste_2025-12-01_18-48-06.png)
-
-![](D:\open-source-project\program-manager\Snipaste_2025-12-01_18-48-36.png)
+## Preview
+<div align="center">
+    <tr>
+      <td><img src="docs/images/主界面.png" alt="主界面" /></td>
+      <td><img src="docs/images/设置界面.png" alt="设置界面" /></td>
+    </tr>
+</div>
 
 ## Features
 
