@@ -1,126 +1,174 @@
+<div align="center">
+
 # Program Manager
 
-A modern, lightweight application launcher built with Tauri + Vue 3.
+**简洁高效的程序启动器**
 
-## Preview
-<div align="center">
-    <tr>
-      <td><img src="docs/images/主界面.png" alt="主界面" /></td>
-      <td><img src="docs/images/设置界面.png" alt="设置界面" /></td>
-    </tr>
+[![Tauri](https://img.shields.io/badge/Tauri-2.0-24C8D8?style=flat-square&logo=tauri&logoColor=white)](https://tauri.app/)
+[![Vue](https://img.shields.io/badge/Vue-3.5-4FC08D?style=flat-square&logo=vue.js&logoColor=white)](https://vuejs.org/)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5.9-3178C6?style=flat-square&logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
+[![Rust](https://img.shields.io/badge/Rust-1.70+-DEA584?style=flat-square&logo=rust&logoColor=white)](https://www.rust-lang.org/)
+[![Vite](https://img.shields.io/badge/Vite-7-646CFF?style=flat-square&logo=vite&logoColor=white)](https://vitejs.dev/)
+[![Pinia](https://img.shields.io/badge/Pinia-3-F7D336?style=flat-square&logo=pinia&logoColor=white)](https://pinia.vuejs.org/)
+
+[![License](https://img.shields.io/badge/License-MIT-green?style=flat-square)](LICENSE)
+[![Platform](https://img.shields.io/badge/Platform-Windows-0078D6?style=flat-square&logo=windows&logoColor=white)](https://www.microsoft.com/windows)
+
+**[English](./docs/README_EN.md)** | 简体中文
+
 </div>
 
-## Features
+---
 
-- **Lightweight** - Only 3-5MB installer, 90% smaller than Electron apps
-- **Fast** - Cold start <0.5s, memory usage 30-50MB
-- **Modern UI** - macOS-style interface with light/dark theme
-- **Smart Sorting** - Recently used apps automatically move to top
-- **Drag & Drop** - Batch add apps, drag to reorder
-- **System Integration** - System tray, single instance, context menu
+## 📸 预览
 
-## Quick Start
+<div align="center">
+  <img src="docs/images/主界面.png" alt="主界面" width="45%" />
+  <img src="docs/images/设置界面.png" alt="设置界面" width="45%" />
+</div>
 
-### Prerequisites
+## ✨ 特性
+
+- 🚀 **轻量快速** - 安装包仅 3-5MB，比 Electron 应用小 90%
+- ⚡ **极速启动** - 冷启动 < 0.5s，内存占用 30-50MB
+- 🎨 **现代界面** - macOS 风格 UI，支持亮色/暗色主题
+- 📊 **智能排序** - 最近使用的应用自动置顶
+- 🖱️ **拖拽操作** - 批量添加应用，拖拽排序
+- 💻 **系统集成** - 系统托盘、单实例运行、右键菜单
+
+## 🛠️ 快速开始
+
+### 环境要求
 
 - Node.js 18+
 - Rust 1.70+
 
-### Development
+### 开发模式
 
 ```bash
+# 安装依赖
 npm install
+
+# 启动开发服务器
 npm run tauri dev
 ```
 
-### Build
+### 构建发布
 
 ```bash
 npm run tauri build
 ```
 
-Output: `src-tauri/target/release/bundle/`
+构建产物位于：`src-tauri/target/release/bundle/`
 
-### Windows Scripts
+### Windows 脚本
 
-- `scripts/dev.bat` - Start dev mode
-- `scripts/build.bat` - Build release
-- `scripts/clean-debug-only.bat` - Clean debug builds
+| 脚本 | 说明 |
+|------|------|
+| `scripts/dev.bat` | 启动开发模式 |
+| `scripts/build.bat` | 构建发布版本 |
+| `scripts/clean-debug-only.bat` | 清理调试构建 |
 
-## Usage
+## 📖 使用指南
 
-1. **Create Category** - Click `+` in sidebar
-2. **Add Apps** - Drag `.exe` or `.lnk` files to app area
-3. **Launch** - Click app card
-4. **Manage** - Right-click for options (move, delete, open location)
-5. **Reorder** - Drag to sort apps or categories
+1. **创建分类** - 点击侧边栏的 `+` 按钮
+2. **添加应用** - 将 `.exe` 或 `.lnk` 文件拖入应用区域
+3. **启动程序** - 点击应用卡片
+4. **管理应用** - 右键点击查看选项（移动、删除、打开位置）
+5. **调整顺序** - 拖拽排序应用或分类
 
-### Settings
+### ⚙️ 设置选项
 
-- Card size: Small / Medium / Large
-- Theme: Light / Dark / Auto
-- Sort: Recent / Name / Custom
+| 选项 | 可选值 |
+|------|--------|
+| 卡片大小 | 小 / 中 / 大 |
+| 主题 | 亮色 / 暗色 / 跟随系统 |
+| 排序方式 | 最近使用 / 名称 / 自定义 |
 
-## Tech Stack
+## 🏗️ 技术栈
 
-| Frontend | Backend |
-|----------|---------|
-| Vue 3 | Tauri 2.0 |
-| TypeScript | Rust |
-| Pinia | Windows API |
-| Vite 7 | |
+<table>
+  <tr>
+    <th>前端</th>
+    <th>后端</th>
+  </tr>
+  <tr>
+    <td>
+      <img src="https://img.shields.io/badge/Vue-3.5-4FC08D?style=flat-square&logo=vue.js&logoColor=white" alt="Vue" /><br/>
+      <img src="https://img.shields.io/badge/TypeScript-5.9-3178C6?style=flat-square&logo=typescript&logoColor=white" alt="TypeScript" /><br/>
+      <img src="https://img.shields.io/badge/Pinia-3-F7D336?style=flat-square&logo=pinia&logoColor=white" alt="Pinia" /><br/>
+      <img src="https://img.shields.io/badge/Vite-7-646CFF?style=flat-square&logo=vite&logoColor=white" alt="Vite" />
+    </td>
+    <td>
+      <img src="https://img.shields.io/badge/Tauri-2.0-24C8D8?style=flat-square&logo=tauri&logoColor=white" alt="Tauri" /><br/>
+      <img src="https://img.shields.io/badge/Rust-1.70+-DEA584?style=flat-square&logo=rust&logoColor=white" alt="Rust" /><br/>
+      <img src="https://img.shields.io/badge/Windows_API-0078D6?style=flat-square&logo=windows&logoColor=white" alt="Windows API" />
+    </td>
+  </tr>
+</table>
 
-## Project Structure
+## 📁 项目结构
 
 ```
 program-manager/
-├── src/                    # Vue frontend
-│   ├── components/         # UI components
-│   ├── stores/             # Pinia store
-│   └── views/              # Views
-├── src-tauri/              # Rust backend
+├── src/                    # Vue 前端
+│   ├── components/         # UI 组件
+│   ├── stores/             # Pinia 状态管理
+│   └── views/              # 视图
+├── src-tauri/              # Rust 后端
 │   └── src/
-│       ├── commands/       # Tauri commands
-│       ├── models/         # Data models
-│       └── utils/          # Utilities
-└── scripts/                # Build scripts
+│       ├── commands/       # Tauri 命令
+│       ├── models/         # 数据模型
+│       └── utils/          # 工具函数
+└── scripts/                # 构建脚本
 ```
 
-## Roadmap
+## 🗺️ 路线图
 
-- [x] Category & app management
-- [x] Drag & drop support
-- [x] Auto icon extraction
-- [x] Theme switching
-- [x] System tray
-- [ ] Usage statistics
-- [ ] Global hotkeys
-- [ ] Import/Export
+- [x] 分类与应用管理
+- [x] 拖拽支持
+- [x] 自动提取图标
+- [x] 主题切换
+- [x] 系统托盘
+- [ ] 使用统计
+- [ ] 全局热键
+- [ ] 导入/导出
 
-## FAQ
+## ❓ 常见问题
 
 <details>
-<summary>Why is it so fast?</summary>
-Tauri uses native WebView instead of bundled Chromium, and Rust binaries start instantly.
+<summary><b>为什么启动这么快？</b></summary>
+<br/>
+Tauri 使用系统原生 WebView 而非打包 Chromium，且 Rust 二进制文件启动几乎是即时的。
 </details>
 
 <details>
-<summary>Where is config stored?</summary>
+<summary><b>配置文件存储在哪里？</b></summary>
+<br/>
 Windows: <code>%APPDATA%/program-manager/config.json</code>
 </details>
 
 <details>
-<summary>Does closing window exit the app?</summary>
-No, it minimizes to system tray. Right-click tray icon → Exit to quit.
+<summary><b>关闭窗口会退出应用吗？</b></summary>
+<br/>
+不会，窗口会最小化到系统托盘。右键点击托盘图标 → 退出 即可完全退出。
 </details>
 
-## License
+## 📄 许可证
 
 [MIT](LICENSE)
 
-## Acknowledgments
+## 🙏 致谢
 
-- [Tauri](https://tauri.app/)
-- [Vue 3](https://vuejs.org/)
-- [Pinia](https://pinia.vuejs.org/)
-- [Lucide Icons](https://lucide.dev/)
+- [Tauri](https://tauri.app/) - 构建更小、更快、更安全的桌面应用
+- [Vue 3](https://vuejs.org/) - 渐进式 JavaScript 框架
+- [Pinia](https://pinia.vuejs.org/) - Vue 状态管理
+- [Lucide Icons](https://lucide.dev/) - 精美的开源图标库
+
+---
+
+<div align="center">
+
+如果这个项目对你有帮助，欢迎 ⭐ Star 支持一下！
+
+</div>
