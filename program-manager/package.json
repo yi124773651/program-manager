@@ -1,0 +1,30 @@
+{
+  "name": "program-manager",
+  "version": "1.0.0",
+  "description": "程序管理器 - 基于 Tauri + Vue 3",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vue-tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "tauri": "tauri"
+  },
+  "devDependencies": {
+    "@tauri-apps/api": "^2.9.0",
+    "@tauri-apps/cli": "^2.9.4",
+    "@types/sortablejs": "^1.15.9",
+    "@vitejs/plugin-vue": "^6.0.2",
+    "typescript": "^5.9.3",
+    "vite": "^7.2.4",
+    "vue": "^3.5.25",
+    "vue-tsc": "^3.1.5"
+  },
+  "dependencies": {
+    "@tauri-apps/plugin-dialog": "^2.4.2",
+    "@tauri-apps/plugin-fs": "^2.4.4",
+    "@vueuse/core": "^14.1.0",
+    "lucide-vue-next": "^0.555.0",
+    "pinia": "^3.0.4",
+    "sortablejs": "^1.15.6"
+  }
+}
