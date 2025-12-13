@@ -21,22 +21,57 @@
       </div>
       <MainView v-else />
     </div>
+
+    <!-- Spotlight 搜索 -->
+    <SpotlightSearch />
+
+    <!-- 快捷便签 -->
+    <QuickNotes />
   </div>
 </template>
 
 <script setup lang="ts">
 import { onMounted, computed, onUnmounted, watch } from 'vue'
 import { useAppStore } from './stores/appStore'
-import { getCurrentWindow } from '@tauri-apps/api/window'
+import { useSearchStore } from './stores/searchStore'
+import { useNotesStore } from './stores/notesStore'
 import { invoke } from '@tauri-apps/api/core'
 import MainView from './views/MainView.vue'
+import SpotlightSearch from './components/SpotlightSearch.vue'
+import QuickNotes from './components/QuickNotes.vue'
 import { listen } from '@tauri-apps/api/event'
 
 const appStore = useAppStore()
+const searchStore = useSearchStore()
+const notesStore = useNotesStore()
 const loading = computed(() => appStore.loading)
 const settings = computed(() => appStore.settings)
 
 let unlisten: (() => void) | null = null
+
+// 快捷键处理
+const handleKeydown = (event: KeyboardEvent) => {
+  // 检查效率工具是否启用
+  if (settings.value.quickerEnabled === false) return
+
+  // Ctrl+K 或 Cmd+K 打开搜索
+  if ((event.ctrlKey || event.metaKey) && event.key === 'k') {
+    // 检查快捷搜索是否启用
+    if (settings.value.spotlightSearchEnabled === false) return
+
+    event.preventDefault()
+    searchStore.toggle()
+  }
+
+  // Alt+N 打开便签
+  if (event.altKey && event.key === 'n') {
+    // 检查快捷便签是否启用
+    if (settings.value.quickNotesEnabled === false) return
+
+    event.preventDefault()
+    notesStore.toggle()
+  }
+}
 
 // 应用主题色
 const applyThemeColor = (color: string) => {
@@ -59,16 +94,11 @@ const hexToRgb = (hex: string) => {
   } : null
 }
 
-// 监听窗口透明度变化
-watch(() => settings.value.windowOpacity, async (opacity) => {
+// 监听窗口透明度变化 - 使用 CSS 变量实现
+watch(() => settings.value.windowOpacity, (opacity) => {
   if (opacity !== undefined) {
-    try {
-      const window = getCurrentWindow()
-      // @ts-ignore - Tauri 2.0 API
-      await window.setOpacity(opacity)
-    } catch (error) {
-      console.error('设置窗口透明度失败:', error)
-    }
+    // 设置 CSS 变量控制背景透明度
+    document.documentElement.style.setProperty('--window-opacity', opacity.toString())
   }
 }, { immediate: true })
 
@@ -80,22 +110,22 @@ watch(() => settings.value.themeColor, (color) => {
 }, { immediate: true })
 
 onMounted(async () => {
+  // 注册快捷键
+  document.addEventListener('keydown', handleKeydown)
+
   await appStore.init()
+
+  // 初始化便签
+  notesStore.init()
 
   // 应用初始设置
   if (settings.value.themeColor) {
     applyThemeColor(settings.value.themeColor)
   }
 
-  // 设置初始窗口透明度
+  // 设置初始窗口透明度 CSS 变量
   if (settings.value.windowOpacity !== undefined) {
-    try {
-      const window = getCurrentWindow()
-      // @ts-ignore - Tauri 2.0 API
-      await window.setOpacity(settings.value.windowOpacity)
-    } catch (error) {
-      console.error('设置初始窗口透明度失败:', error)
-    }
+    document.documentElement.style.setProperty('--window-opacity', settings.value.windowOpacity.toString())
   }
 
   // 监听从右键菜单添加文件的事件
@@ -178,6 +208,9 @@ onMounted(async () => {
 })
 
 onUnmounted(() => {
+  // 移除 Ctrl+K 快捷键
+  document.removeEventListener('keydown', handleKeydown)
+
   if (unlisten) {
     unlisten()
   }

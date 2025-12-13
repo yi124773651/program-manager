@@ -110,13 +110,182 @@
           </div>
         </section>
 
+        <!-- 效率工具设置 (Quicker) -->
+        <section class="settings-section">
+          <div class="section-header">
+            <h3>效率工具</h3>
+            <p class="section-description">类似 Quicker 的快捷功能，提升操作效率</p>
+          </div>
+
+          <!-- 总开关 -->
+          <div class="setting-item feature-toggle">
+            <div class="setting-info">
+              <div class="setting-label">启用效率工具</div>
+              <div class="setting-desc">关闭后将禁用所有下方的效率功能</div>
+            </div>
+            <div class="setting-control">
+              <label class="toggle-switch">
+                <input
+                  type="checkbox"
+                  :checked="settings.quickerEnabled !== false"
+                  @change="toggleQuicker"
+                />
+                <span class="toggle-slider"></span>
+              </label>
+            </div>
+          </div>
+
+          <!-- 全局快捷键唤起 -->
+          <div class="setting-item" :class="{ disabled: settings.quickerEnabled === false }">
+            <div class="setting-info">
+              <div class="setting-label">
+                <KeyboardIcon :size="16" class="feature-icon" />
+                全局快捷键唤起
+              </div>
+              <div class="setting-desc">
+                按下 <kbd>{{ settings.globalShortcut || 'Alt+Space' }}</kbd> 快速显示/隐藏窗口，无论当前在哪个应用中
+              </div>
+            </div>
+            <div class="setting-control">
+              <label class="toggle-switch">
+                <input
+                  type="checkbox"
+                  :checked="settings.globalShortcutEnabled !== false"
+                  :disabled="settings.quickerEnabled === false"
+                  @change="toggleGlobalShortcut"
+                />
+                <span class="toggle-slider"></span>
+              </label>
+            </div>
+          </div>
+
+          <!-- 剪贴板历史 -->
+          <div class="setting-item" :class="{ disabled: settings.quickerEnabled === false }">
+            <div class="setting-info">
+              <div class="setting-label">
+                <ClipboardListIcon :size="16" class="feature-icon" />
+                剪贴板历史
+              </div>
+              <div class="setting-desc">
+                自动记录复制的内容，支持搜索、置顶和快速粘贴，最多保存 {{ settings.clipboardMaxItems || 100 }} 条记录
+              </div>
+            </div>
+            <div class="setting-control">
+              <label class="toggle-switch">
+                <input
+                  type="checkbox"
+                  :checked="settings.clipboardHistoryEnabled !== false"
+                  :disabled="settings.quickerEnabled === false"
+                  @change="toggleClipboardHistory"
+                />
+                <span class="toggle-slider"></span>
+              </label>
+            </div>
+          </div>
+
+          <!-- 快捷搜索 -->
+          <div class="setting-item" :class="{ disabled: settings.quickerEnabled === false }">
+            <div class="setting-info">
+              <div class="setting-label">
+                <SearchIcon :size="16" class="feature-icon" />
+                快捷搜索
+              </div>
+              <div class="setting-desc">
+                按下 <kbd>{{ settings.spotlightShortcut || 'Ctrl+K' }}</kbd> 打开 Spotlight 风格搜索框，快速搜索应用、剪贴板和网页
+              </div>
+            </div>
+            <div class="setting-control">
+              <label class="toggle-switch">
+                <input
+                  type="checkbox"
+                  :checked="settings.spotlightSearchEnabled !== false"
+                  :disabled="settings.quickerEnabled === false"
+                  @change="toggleSpotlightSearch"
+                />
+                <span class="toggle-slider"></span>
+              </label>
+            </div>
+          </div>
+
+          <!-- 快捷便签 -->
+          <div class="setting-item" :class="{ disabled: settings.quickerEnabled === false }">
+            <div class="setting-info">
+              <div class="setting-label">
+                <StickyNoteIcon :size="16" class="feature-icon" />
+                快捷便签
+              </div>
+              <div class="setting-desc">
+                按下 <kbd>{{ settings.quickNotesShortcut || 'Alt+N' }}</kbd> 快速打开便签，记录临时内容，自动保存
+              </div>
+            </div>
+            <div class="setting-control">
+              <label class="toggle-switch">
+                <input
+                  type="checkbox"
+                  :checked="settings.quickNotesEnabled !== false"
+                  :disabled="settings.quickerEnabled === false"
+                  @change="toggleQuickNotes"
+                />
+                <span class="toggle-slider"></span>
+              </label>
+            </div>
+          </div>
+
+          <!-- 计算器增强 -->
+          <div class="setting-item" :class="{ disabled: settings.quickerEnabled === false }">
+            <div class="setting-info">
+              <div class="setting-label">
+                <CalculatorIcon :size="16" class="feature-icon" />
+                计算器增强
+              </div>
+              <div class="setting-desc">
+                在搜索框中输入 <kbd>=表达式</kbd> 快速计算，如 <kbd>=1+2*3</kbd>，回车复制结果
+              </div>
+            </div>
+            <div class="setting-control">
+              <label class="toggle-switch">
+                <input
+                  type="checkbox"
+                  :checked="settings.calculatorEnabled !== false"
+                  :disabled="settings.quickerEnabled === false"
+                  @change="toggleCalculator"
+                />
+                <span class="toggle-slider"></span>
+              </label>
+            </div>
+          </div>
+
+          <!-- 功能说明 -->
+          <div class="feature-tips">
+            <div class="tip-title">快捷键说明</div>
+            <div class="tip-list">
+              <div class="tip-row">
+                <kbd>Alt+Space</kbd>
+                <span>显示/隐藏窗口</span>
+              </div>
+              <div class="tip-row">
+                <kbd>Ctrl+K</kbd>
+                <span>打开快捷搜索</span>
+              </div>
+              <div class="tip-row">
+                <kbd>Alt+N</kbd>
+                <span>打开快捷便签</span>
+              </div>
+              <div class="tip-row">
+                <kbd>=表达式</kbd>
+                <span>在搜索框中计算</span>
+              </div>
+            </div>
+          </div>
+        </section>
+
         <!-- 关于 -->
         <section class="settings-section">
           <div class="section-header">
             <h3>关于</h3>
           </div>
           <div class="about-info">
-            <p><strong>程序管理器</strong> v1.0.0</p>
+            <p><strong>程序管理器</strong> v1.1.0</p>
             <p class="about-desc">一个现代化的 Windows 程序管理工具</p>
           </div>
         </section>
@@ -129,7 +298,7 @@
 import { computed } from 'vue'
 import { open } from '@tauri-apps/plugin-dialog'
 import { readFile } from '@tauri-apps/plugin-fs'
-import { XIcon } from 'lucide-vue-next'
+import { XIcon, KeyboardIcon, ClipboardListIcon, SearchIcon, StickyNoteIcon, CalculatorIcon } from 'lucide-vue-next'
 import { useAppStore } from '@/stores/appStore'
 import { DEFAULT_THEME_COLORS } from '@/types'
 
@@ -191,6 +360,37 @@ const updateBackgroundOpacity = async (opacity: number) => {
 // 更新窗口透明度
 const updateWindowOpacity = async (opacity: number) => {
   await appStore.updateSettings({ windowOpacity: opacity })
+}
+
+// 效率工具开关
+const toggleQuicker = async (event: Event) => {
+  const checked = (event.target as HTMLInputElement).checked
+  await appStore.updateSettings({ quickerEnabled: checked })
+}
+
+const toggleGlobalShortcut = async (event: Event) => {
+  const checked = (event.target as HTMLInputElement).checked
+  await appStore.updateSettings({ globalShortcutEnabled: checked })
+}
+
+const toggleClipboardHistory = async (event: Event) => {
+  const checked = (event.target as HTMLInputElement).checked
+  await appStore.updateSettings({ clipboardHistoryEnabled: checked })
+}
+
+const toggleSpotlightSearch = async (event: Event) => {
+  const checked = (event.target as HTMLInputElement).checked
+  await appStore.updateSettings({ spotlightSearchEnabled: checked })
+}
+
+const toggleQuickNotes = async (event: Event) => {
+  const checked = (event.target as HTMLInputElement).checked
+  await appStore.updateSettings({ quickNotesEnabled: checked })
+}
+
+const toggleCalculator = async (event: Event) => {
+  const checked = (event.target as HTMLInputElement).checked
+  await appStore.updateSettings({ calculatorEnabled: checked })
 }
 </script>
 
@@ -465,6 +665,13 @@ const updateWindowOpacity = async (opacity: number) => {
   color: white;
 }
 
+/* 带图标的按钮 */
+.btn-secondary {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
 button:disabled {
   opacity: 0.6;
   cursor: not-allowed;
@@ -489,5 +696,155 @@ button:disabled {
 .about-desc {
   color: var(--text-secondary);
   font-size: 13px !important;
+}
+
+/* 开关样式 */
+.toggle-switch {
+  position: relative;
+  display: inline-block;
+  width: 48px;
+  height: 26px;
+}
+
+.toggle-switch input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.toggle-slider {
+  position: absolute;
+  cursor: pointer;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: var(--border-color);
+  transition: 0.3s;
+  border-radius: 26px;
+}
+
+.toggle-slider:before {
+  position: absolute;
+  content: "";
+  height: 20px;
+  width: 20px;
+  left: 3px;
+  bottom: 3px;
+  background-color: white;
+  transition: 0.3s;
+  border-radius: 50%;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+.toggle-switch input:checked + .toggle-slider {
+  background-color: var(--primary-color);
+}
+
+.toggle-switch input:checked + .toggle-slider:before {
+  transform: translateX(22px);
+}
+
+.toggle-switch input:disabled + .toggle-slider {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* 禁用状态 */
+.setting-item.disabled {
+  opacity: 0.5;
+  pointer-events: none;
+}
+
+.setting-item.disabled .toggle-switch {
+  pointer-events: auto;
+}
+
+/* 功能图标 */
+.feature-icon {
+  margin-right: 8px;
+  vertical-align: middle;
+  color: var(--primary-color);
+}
+
+.setting-label {
+  display: flex;
+  align-items: center;
+}
+
+/* 功能说明样式 */
+.feature-tips {
+  margin-top: 16px;
+  padding: 16px;
+  background: var(--bg-secondary);
+  border-radius: 8px;
+  border: 1px solid var(--border-color);
+}
+
+.tip-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  margin-bottom: 12px;
+}
+
+.tip-list {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px;
+}
+
+.tip-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+}
+
+.tip-row kbd {
+  background: var(--bg-tertiary);
+  padding: 3px 8px;
+  border-radius: 4px;
+  font-size: 12px;
+  font-family: inherit;
+  border: 1px solid var(--border-color);
+  min-width: 80px;
+  text-align: center;
+}
+
+.tip-row span {
+  color: var(--text-secondary);
+}
+
+/* 设置项中的 kbd 样式 */
+.setting-desc kbd {
+  background: var(--bg-tertiary);
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-family: inherit;
+  border: 1px solid var(--border-color);
+}
+
+.feature-toggle {
+  background: linear-gradient(135deg, var(--primary-color) 0%, var(--primary-hover) 100%);
+  border-color: transparent;
+}
+
+.feature-toggle .setting-label,
+.feature-toggle .setting-desc {
+  color: white;
+}
+
+.feature-toggle .toggle-slider {
+  background-color: rgba(255, 255, 255, 0.3);
+}
+
+.feature-toggle .toggle-switch input:checked + .toggle-slider {
+  background-color: rgba(255, 255, 255, 0.9);
+}
+
+.feature-toggle .toggle-switch input:checked + .toggle-slider:before {
+  background-color: var(--primary-color);
 }
 </style>

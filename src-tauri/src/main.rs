@@ -9,6 +9,7 @@ use commands::*;
 use models::AppState;
 use std::sync::Mutex;
 use tauri::{Manager, Emitter, menu::{MenuBuilder, MenuItemBuilder}};
+use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut, ShortcutState};
 
 fn main() {
     // 加载或创建配置
@@ -18,6 +19,8 @@ fn main() {
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
+        .plugin(tauri_plugin_global_shortcut::Builder::new().build())
+        .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_single_instance::init(|app, args, _cwd| {
             // 当检测到第二个实例启动时，这个回调会被调用
             println!("Single instance callback triggered with args: {:?}", args);
@@ -58,6 +61,9 @@ fn main() {
             is_context_menu_registered,
             resolve_shortcut,
             check_app_exists,
+            execute_action_template,
+            // 应用操作命令
+            launch_app_as_admin,
         ])
         .setup(|app| {
             // 处理启动时的命令行参数
@@ -101,7 +107,8 @@ fn main() {
                         }
                     }
                     "quit" => {
-                        app.exit(0);
+                        // 强制退出应用
+                        std::process::exit(0);
                     }
                     _ => {}
                 }
@@ -138,6 +145,22 @@ fn main() {
                     }
                 });
             }
+
+            // 注册全局快捷键 Alt+Space 切换窗口显示/隐藏
+            let shortcut = "Alt+Space".parse::<Shortcut>().unwrap();
+            app.global_shortcut().on_shortcut(shortcut, |app, _shortcut, event| {
+                if event.state == ShortcutState::Pressed {
+                    if let Some(window) = app.get_webview_window("main") {
+                        if window.is_visible().unwrap_or(false) {
+                            let _ = window.hide();
+                        } else {
+                            let _ = window.show();
+                            let _ = window.set_focus();
+                            let _ = window.center();
+                        }
+                    }
+                }
+            })?;
 
             Ok(())
         })

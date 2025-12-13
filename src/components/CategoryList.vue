@@ -1,11 +1,34 @@
 <template>
   <div class="category-list">
-    <div class="category-header">
-      <h2>分类</h2>
-      <button class="add-btn" @click="handleAddCategory" title="添加分类">
-        <PlusIcon :size="16" />
+    <!-- 标签页切换 -->
+    <div v-if="showTabs" class="sidebar-tabs">
+      <button
+        class="tab-btn"
+        :class="{ active: activeTab === 'categories' }"
+        @click="activeTab = 'categories'"
+      >
+        <FolderIcon :size="16" />
+        <span>分类</span>
+      </button>
+      <button
+        v-if="showClipboardTab"
+        class="tab-btn"
+        :class="{ active: activeTab === 'clipboard' }"
+        @click="activeTab = 'clipboard'"
+      >
+        <ClipboardListIcon :size="16" />
+        <span>剪贴板</span>
       </button>
     </div>
+
+    <!-- 分类面板 -->
+    <template v-if="activeTab === 'categories'">
+      <div class="category-header">
+        <h2>分类</h2>
+        <button class="add-btn" @click="handleAddCategory" title="添加分类">
+          <PlusIcon :size="16" />
+        </button>
+      </div>
 
     <div ref="categoriesRef" class="categories">
       <div
@@ -34,13 +57,56 @@
       </div>
     </div>
 
+    <!-- 场景面板 -->
+    <div class="scenes-section">
+      <div class="scenes-header">
+        <div class="scenes-title">
+          <ZapIcon :size="16" />
+          <span>场景</span>
+        </div>
+        <button class="add-btn small" @click="handleAddScene" title="新建场景">
+          <PlusIcon :size="14" />
+        </button>
+      </div>
+      <div class="scenes-list">
+        <div
+          v-for="scene in scenes"
+          :key="scene.id"
+          class="scene-item"
+          :class="{ executing: scenesStore.currentExecutingScene === scene.id }"
+          @click="handleExecuteScene(scene)"
+          @contextmenu.prevent="showSceneContextMenu($event, scene)"
+        >
+          <span class="scene-icon">{{ scene.icon }}</span>
+          <span class="scene-name">{{ scene.name }}</span>
+          <span v-if="scenesStore.currentExecutingScene === scene.id" class="scene-progress">
+            {{ scenesStore.executionProgress }}%
+          </span>
+          <span v-else class="scene-actions-count">{{ scene.actions.length }}</span>
+        </div>
+        <div v-if="scenes.length === 0" class="empty-scenes">
+          <span>点击 + 创建场景</span>
+        </div>
+      </div>
+    </div>
+
     <!-- 设置按钮 -->
     <div class="settings-footer">
       <button class="settings-btn" @click="showSettings = true" title="设置">
         <SettingsIcon :size="18" />
         <span>设置</span>
       </button>
+      <div class="footer-right">
+        <button class="github-link" @click="openGitHub" title="GitHub">
+          <GithubIcon :size="18" />
+        </button>
+        <span class="version-text">v1.1.0</span>
+      </div>
     </div>
+    </template>
+
+    <!-- 剪贴板面板 - 在侧边栏内显示 -->
+    <ClipboardHistory v-else-if="activeTab === 'clipboard'" />
 
     <!-- 设置对话框 -->
     <Teleport to="body">
@@ -67,29 +133,88 @@
         </div>
       </div>
     </Transition>
+
+    <!-- 场景右键菜单 -->
+    <Transition name="fade">
+      <div
+        v-if="sceneContextMenu.show"
+        class="context-menu"
+        :style="{ left: sceneContextMenu.x + 'px', top: sceneContextMenu.y + 'px' }"
+        @click.stop
+      >
+        <div class="menu-item" @click="handleEditScene">
+          <Edit2Icon :size="14" />
+          <span>编辑场景</span>
+        </div>
+        <div class="menu-item danger" @click="handleDeleteScene">
+          <TrashIcon :size="14" />
+          <span>删除</span>
+        </div>
+      </div>
+    </Transition>
+
+    <!-- 场景编辑器 -->
+    <Teleport to="body">
+      <Transition name="fade">
+        <SceneEditor
+          v-if="showSceneEditor && editingScene"
+          :scene="editingScene"
+          @close="closeSceneEditor"
+        />
+      </Transition>
+    </Teleport>
   </div>
 </template>
 
 <script setup lang="ts">
 import { computed, ref, onMounted, onUnmounted, nextTick } from 'vue'
 import { useAppStore } from '@/stores/appStore'
-import { FolderIcon, PlusIcon, Edit2Icon, TrashIcon, SettingsIcon } from 'lucide-vue-next'
-import type { Category } from '@/types'
+import { useScenesStore } from '@/stores/scenesStore'
+import { FolderIcon, PlusIcon, Edit2Icon, TrashIcon, SettingsIcon, ClipboardListIcon, ZapIcon, GithubIcon } from 'lucide-vue-next'
+import type { Category, Scene } from '@/types'
+import { SCENE_ICONS } from '@/types'
 import Sortable from 'sortablejs'
 import SettingsDialog from './SettingsDialog.vue'
+import ClipboardHistory from './ClipboardHistory.vue'
+import SceneEditor from './SceneEditor.vue'
 
 const appStore = useAppStore()
+const scenesStore = useScenesStore()
 const categories = computed(() => appStore.categories)
+const scenes = computed(() => scenesStore.allScenes)
 const categoriesRef = ref<HTMLElement | null>(null)
 const sortableInstance = ref<any>(null)
 
 const showSettings = ref(false)
+const activeTab = ref<'categories' | 'clipboard'>('categories')
+
+// 场景编辑器状态
+const showSceneEditor = ref(false)
+const editingScene = ref<Scene | null>(null)
+
+// 是否显示剪贴板标签（根据设置）
+const showClipboardTab = computed(() => {
+  const settings = appStore.settings
+  return settings.quickerEnabled !== false && settings.clipboardHistoryEnabled !== false
+})
+
+// 是否显示标签栏（有多个功能启用时显示）
+const showTabs = computed(() => {
+  return showClipboardTab.value
+})
 
 const contextMenu = ref({
   show: false,
   x: 0,
   y: 0,
   category: null as Category | null
+})
+
+const sceneContextMenu = ref({
+  show: false,
+  x: 0,
+  y: 0,
+  scene: null as Scene | null
 })
 
 const isActive = (categoryId: string) => {
@@ -153,6 +278,114 @@ const handleDelete = async () => {
   if (confirmed) {
     await appStore.deleteCategory(category.id)
   }
+}
+
+// ============ 场景相关函数 ============
+
+// 初始化场景 store
+const initScenes = () => {
+  scenesStore.init()
+}
+
+// 新建场景
+const handleAddScene = async () => {
+  const name = prompt('请输入场景名称：')
+  if (!name || !name.trim()) return
+
+  const randomIcon = SCENE_ICONS[Math.floor(Math.random() * SCENE_ICONS.length)]
+  const newScene = scenesStore.addScene({
+    name: name.trim(),
+    icon: randomIcon,
+    actions: []
+  })
+
+  // 创建后打开编辑器
+  if (newScene) {
+    editingScene.value = { ...newScene, actions: [...newScene.actions] }
+    showSceneEditor.value = true
+  }
+}
+
+// 执行场景
+const handleExecuteScene = async (scene: Scene) => {
+  if (scenesStore.executing) {
+    alert('正在执行其他场景，请稍候...')
+    return
+  }
+
+  if (scene.actions.length === 0) {
+    // 如果没有动作，打开编辑器
+    const latestScene = scenesStore.scenes.find(s => s.id === scene.id)
+    if (latestScene) {
+      editingScene.value = { ...latestScene, actions: [...latestScene.actions] }
+      showSceneEditor.value = true
+    }
+    return
+  }
+
+  const result = await scenesStore.executeScene(scene.id)
+  if (!result.success && result.error) {
+    alert(`场景执行失败: ${result.error}`)
+  }
+}
+
+// 显示场景右键菜单
+const showSceneContextMenu = (event: MouseEvent, scene: Scene) => {
+  sceneContextMenu.value = {
+    show: true,
+    x: event.clientX,
+    y: event.clientY,
+    scene
+  }
+}
+
+// 隐藏场景右键菜单
+const hideSceneContextMenu = () => {
+  sceneContextMenu.value.show = false
+}
+
+// 编辑场景
+const handleEditScene = () => {
+  const scene = sceneContextMenu.value.scene
+  if (scene) {
+    // 从 store 获取最新的 scene 对象
+    const latestScene = scenesStore.scenes.find(s => s.id === scene.id)
+    if (latestScene) {
+      editingScene.value = { ...latestScene, actions: [...latestScene.actions] }
+      showSceneEditor.value = true
+    }
+  }
+  hideSceneContextMenu()
+}
+
+// 删除场景
+const handleDeleteScene = async () => {
+  const scene = sceneContextMenu.value.scene
+  if (!scene) return
+
+  hideSceneContextMenu()
+
+  const { ask } = await import('@tauri-apps/plugin-dialog')
+  const confirmed = await ask(`确定要删除场景"${scene.name}"吗？`, {
+    title: '确认删除',
+    kind: 'warning'
+  })
+
+  if (confirmed) {
+    scenesStore.deleteScene(scene.id)
+  }
+}
+
+// 关闭场景编辑器
+const closeSceneEditor = () => {
+  showSceneEditor.value = false
+  editingScene.value = null
+}
+
+// 打开 GitHub 仓库
+const openGitHub = async () => {
+  const { open } = await import('@tauri-apps/plugin-shell')
+  await open('https://github.com/yi124773651/program-manager')
 }
 
 // 初始化分类拖拽排序
@@ -273,6 +506,8 @@ const initSortable = () => {
 
 onMounted(() => {
   document.addEventListener('click', hideContextMenu)
+  document.addEventListener('click', hideSceneContextMenu)
+  initScenes()
   nextTick(() => {
     initSortable()
   })
@@ -280,6 +515,7 @@ onMounted(() => {
 
 onUnmounted(() => {
   document.removeEventListener('click', hideContextMenu)
+  document.removeEventListener('click', hideSceneContextMenu)
   if (sortableInstance.value) {
     sortableInstance.value.destroy()
   }
@@ -296,6 +532,38 @@ onUnmounted(() => {
   border-right: 1px solid var(--border-color);
   display: flex;
   flex-direction: column;
+}
+
+.sidebar-tabs {
+  display: flex;
+  padding: 8px;
+  gap: 4px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.tab-btn {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  background: transparent;
+  transition: all 0.2s;
+}
+
+.tab-btn:hover {
+  background: var(--category-hover);
+  color: var(--text-primary);
+}
+
+.tab-btn.active {
+  background: var(--primary-color);
+  color: white;
 }
 
 .category-header {
@@ -492,5 +760,170 @@ onUnmounted(() => {
 
 .menu-item.danger:hover {
   background: rgba(255, 59, 48, 0.1);
+}
+
+/* ============ 场景面板样式 ============ */
+.scenes-section {
+  padding: 12px 8px 8px 8px;
+  border-top: 1px solid var(--border-color);
+}
+
+.scenes-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px;
+  margin-bottom: 8px;
+}
+
+.scenes-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.add-btn.small {
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+  background: var(--btn-primary);
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+}
+
+.add-btn.small:hover {
+  background: var(--btn-primary-hover);
+  transform: scale(1.1);
+}
+
+.scenes-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.scene-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s;
+  user-select: none;
+  background: var(--bg-primary);
+}
+
+.scene-item:hover {
+  background: var(--category-hover);
+  transform: translateX(2px);
+}
+
+.scene-item.executing {
+  background: var(--primary-color);
+  color: white;
+  cursor: not-allowed;
+}
+
+.scene-icon {
+  font-size: 18px;
+  flex-shrink: 0;
+}
+
+.scene-name {
+  flex: 1;
+  font-size: 13px;
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.scene-actions-count {
+  font-size: 11px;
+  color: var(--text-secondary);
+  background: var(--badge-bg);
+  padding: 2px 6px;
+  border-radius: 8px;
+  min-width: 20px;
+  text-align: center;
+}
+
+.scene-item.executing .scene-actions-count {
+  display: none;
+}
+
+.scene-progress {
+  font-size: 11px;
+  font-weight: 600;
+  color: white;
+}
+
+.empty-scenes {
+  padding: 20px;
+  text-align: center;
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.settings-footer {
+  padding: 8px;
+  border-top: 1px solid var(--border-color);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.settings-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  transition: all 0.2s;
+}
+
+.settings-btn:hover {
+  background: var(--category-hover);
+  color: var(--text-primary);
+}
+
+.footer-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.github-link {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  color: var(--text-secondary);
+  transition: all 0.2s;
+}
+
+.github-link:hover {
+  background: var(--category-hover);
+  color: var(--text-primary);
+}
+
+.version-text {
+  font-size: 11px;
+  color: var(--text-secondary);
+  opacity: 0.7;
 }
 </style>

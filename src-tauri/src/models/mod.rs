@@ -49,6 +49,37 @@ pub struct AppSettings {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[serde(rename = "windowOpacity")]
     pub window_opacity: Option<f32>,
+    // Quicker 效率工具设置
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "quickerEnabled")]
+    pub quicker_enabled: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "globalShortcutEnabled")]
+    pub global_shortcut_enabled: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "globalShortcut")]
+    pub global_shortcut: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "clipboardHistoryEnabled")]
+    pub clipboard_history_enabled: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "clipboardMaxItems")]
+    pub clipboard_max_items: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "spotlightSearchEnabled")]
+    pub spotlight_search_enabled: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "spotlightShortcut")]
+    pub spotlight_shortcut: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "quickNotesEnabled")]
+    pub quick_notes_enabled: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "quickNotesShortcut")]
+    pub quick_notes_shortcut: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "calculatorEnabled")]
+    pub calculator_enabled: Option<bool>,
 }
 
 impl Default for AppSettings {
@@ -62,6 +93,17 @@ impl Default for AppSettings {
             background_image: None,
             background_opacity: Some(0.3),
             window_opacity: Some(0.95),
+            // 效率工具默认值
+            quicker_enabled: Some(true),
+            global_shortcut_enabled: Some(true),
+            global_shortcut: Some("Alt+Space".to_string()),
+            clipboard_history_enabled: Some(false),
+            clipboard_max_items: Some(100),
+            spotlight_search_enabled: Some(true),
+            spotlight_shortcut: Some("Ctrl+K".to_string()),
+            quick_notes_enabled: Some(true),
+            quick_notes_shortcut: Some("Alt+N".to_string()),
+            calculator_enabled: Some(true),
         }
     }
 }

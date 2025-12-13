@@ -220,3 +220,69 @@ pub fn check_app_exists(path: String, state: State<AppState>) -> bool {
         app.path.to_lowercase() == path.to_lowercase()
     })
 }
+
+/// 以管理员身份运行应用
+#[tauri::command]
+pub fn launch_app_as_admin(app_path: String) -> Result<(), String> {
+    #[cfg(target_os = "windows")]
+    {
+        use std::os::windows::process::CommandExt;
+        use std::process::Command;
+
+        // 使用 runas 动词以管理员身份运行
+        Command::new("powershell")
+            .args(&[
+                "-NoProfile",
+                "-Command",
+                &format!("Start-Process '{}' -Verb RunAs", app_path)
+            ])
+            .creation_flags(0x08000000) // CREATE_NO_WINDOW
+            .spawn()
+            .map_err(|e| format!("以管理员身份启动失败: {}", e))?;
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    {
+        return Err("管理员启动仅支持 Windows".to_string());
+    }
+
+    Ok(())
+}
+
+/// 执行动作模板（用于场景功能）
+#[tauri::command]
+pub fn execute_action_template(
+    script_content: String,
+    app_path: String,
+    app_name: String,
+) -> Result<String, String> {
+    #[cfg(target_os = "windows")]
+    {
+        use std::os::windows::process::CommandExt;
+        use std::process::Command;
+
+        const CREATE_NO_WINDOW: u32 = 0x08000000;
+
+        let output = Command::new("powershell")
+            .args(&["-NoProfile", "-Command", &script_content])
+            .env("APP_PATH", &app_path)
+            .env("APP_NAME", &app_name)
+            .creation_flags(CREATE_NO_WINDOW)
+            .output()
+            .map_err(|e| format!("执行失败: {}", e))?;
+
+        let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+        let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+
+        if !output.status.success() && !stderr.is_empty() {
+            return Err(stderr);
+        }
+
+        Ok(stdout)
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    {
+        Err("动作模板执行仅支持 Windows".to_string())
+    }
+}

@@ -86,6 +86,7 @@
 
 <script setup lang="ts">
 import { computed, ref, onMounted, onUnmounted, nextTick, watch } from 'vue'
+import { useDebounceFn } from '@vueuse/core'
 import { useAppStore } from '@/stores/appStore'
 import { SearchIcon, PlusIcon, GridIcon, FolderIcon } from 'lucide-vue-next'
 import CategoryList from '@/components/CategoryList.vue'
@@ -96,31 +97,12 @@ import { type UnlistenFn } from '@tauri-apps/api/event'
 import { getCurrentWindow } from '@tauri-apps/api/window'
 import Sortable from 'sortablejs'
 
-// 使用 window 对象存储全局状态，防止模块热更新导致状态丢失
+// 全局状态：仅保留事件监听器引用，防止 HMR 重复注册
 declare global {
   interface Window {
-    __dragDropState?: {
-      unlisten: UnlistenFn | null
-      initialized: boolean
-      isProcessing: boolean
-      lastDropTime: number
-      lastDropPathsKey: string
-    }
+    __dragDropUnlisten?: UnlistenFn | null
   }
 }
-
-// 初始化全局状态
-if (!window.__dragDropState) {
-  window.__dragDropState = {
-    unlisten: null,
-    initialized: false,
-    isProcessing: false,
-    lastDropTime: 0,
-    lastDropPathsKey: ''
-  }
-}
-
-const dragDropState = window.__dragDropState
 
 const appStore = useAppStore()
 
@@ -143,12 +125,9 @@ const setCardSize = (size: 'small' | 'medium' | 'large') => {
   appStore.updateSettings({ cardSize: size })
 }
 
-// 处理 Tauri 文件拖拽
-const handleTauriFileDrop = async (paths: string[]) => {
-  if (!paths || paths.length === 0) {
-    dragDropState.isProcessing = false
-    return
-  }
+// 处理 Tauri 文件拖拽（核心逻辑）
+const processDroppedFiles = async (paths: string[]) => {
+  if (!paths || paths.length === 0) return
 
   console.log('处理拖拽文件:', paths)
 
@@ -190,66 +169,36 @@ const handleTauriFileDrop = async (paths: string[]) => {
     await showAddResults(results)
   } catch (error) {
     console.error('拖拽处理错误:', error)
-  } finally {
-    // 延迟解锁
-    setTimeout(() => {
-      dragDropState.isProcessing = false
-    }, 500)
   }
 }
 
+// 使用防抖包装拖拽处理函数，300ms 内的重复触发会被忽略
+const handleTauriFileDrop = useDebounceFn(processDroppedFiles, 300)
+
 // 初始化 Tauri 拖拽事件监听
 const initTauriDragDrop = async () => {
-  // 使用全局标记防止重复注册
-  if (dragDropState.initialized) {
-    console.log('Tauri 拖拽事件监听已存在（全局），跳过初始化')
+  // 已存在监听器则跳过（防止 HMR 重复注册）
+  if (window.__dragDropUnlisten) {
+    console.log('Tauri 拖拽事件监听已存在，跳过初始化')
     return
   }
 
   try {
-    // 先清理可能存在的旧监听器
-    if (dragDropState.unlisten) {
-      dragDropState.unlisten()
-      dragDropState.unlisten = null
-    }
-
     const currentWindow = getCurrentWindow()
 
     // 监听拖拽事件
-    dragDropState.unlisten = await currentWindow.onDragDropEvent((event) => {
+    window.__dragDropUnlisten = await currentWindow.onDragDropEvent((event) => {
       if (event.payload.type === 'enter') {
         isDragging.value = true
       } else if (event.payload.type === 'leave') {
         isDragging.value = false
       } else if (event.payload.type === 'drop') {
-        // drop 时立即关闭拖拽状态
         isDragging.value = false
-
-        const paths = event.payload.paths
-        const now = Date.now()
-        const pathsKey = paths.join('|')
-
-        // 在同步代码中立即检查和设置锁
-        if (dragDropState.isProcessing) {
-          console.log('跳过：正在处理中')
-          return
-        }
-
-        if (pathsKey === dragDropState.lastDropPathsKey && now - dragDropState.lastDropTime < 2000) {
-          console.log('跳过：时间去重')
-          return
-        }
-
-        // 立即设置锁
-        dragDropState.isProcessing = true
-        dragDropState.lastDropTime = now
-        dragDropState.lastDropPathsKey = pathsKey
-
-        handleTauriFileDrop(paths)
+        // 防抖函数会自动处理重复触发
+        handleTauriFileDrop(event.payload.paths)
       }
     })
 
-    dragDropState.initialized = true
     console.log('Tauri 拖拽事件监听已初始化')
   } catch (error) {
     console.error('初始化 Tauri 拖拽事件监听失败:', error)
