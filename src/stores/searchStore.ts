@@ -244,7 +244,7 @@ export const useSearchStore = defineStore('search', {
       switch (result.type) {
         case 'app':
           try {
-            await invoke('launch_app', { path: result.data.path })
+            await invoke('launch_app', { appId: result.data.id })
           } catch (error) {
             console.error('启动应用失败:', error)
           }

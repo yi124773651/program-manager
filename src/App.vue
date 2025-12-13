@@ -208,7 +208,7 @@ onMounted(async () => {
 })
 
 onUnmounted(() => {
-  // 移除 Ctrl+K 快捷键
+  // 移除快捷键监听
   document.removeEventListener('keydown', handleKeydown)
 
   if (unlisten) {

@@ -277,8 +277,14 @@ pub fn execute_action_template(
 
         let start_time = Instant::now();
 
+        // 设置 UTF-8 编码以避免乱码
+        let utf8_script = format!(
+            "[Console]::OutputEncoding = [System.Text.Encoding]::UTF8; $OutputEncoding = [System.Text.Encoding]::UTF8; {}",
+            script_content
+        );
+
         let output = Command::new("powershell")
-            .args(&["-NoProfile", "-Command", &script_content])
+            .args(&["-NoProfile", "-Command", &utf8_script])
             .env("APP_PATH", &app_path)
             .env("APP_NAME", &app_name)
             .creation_flags(CREATE_NO_WINDOW)

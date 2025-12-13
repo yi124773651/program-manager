@@ -8,7 +8,7 @@ mod utils;
 use commands::*;
 use models::AppState;
 use std::sync::Mutex;
-use tauri::{Manager, Emitter, menu::{MenuBuilder, MenuItemBuilder}};
+use tauri::{Manager, Emitter, WebviewUrl, WebviewWindowBuilder, menu::{MenuBuilder, MenuItemBuilder}};
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut, ShortcutState};
 
 fn main() {
@@ -151,13 +151,81 @@ fn main() {
             app.global_shortcut().on_shortcut(shortcut, |app, _shortcut, event| {
                 if event.state == ShortcutState::Pressed {
                     if let Some(window) = app.get_webview_window("main") {
-                        if window.is_visible().unwrap_or(false) {
+                        let is_visible = window.is_visible().unwrap_or(false);
+                        let is_minimized = window.is_minimized().unwrap_or(false);
+
+                        // 如果窗口可见且没有最小化，则隐藏
+                        if is_visible && !is_minimized {
                             let _ = window.hide();
                         } else {
+                            // 否则显示窗口（包括从最小化恢复）
                             let _ = window.show();
+                            let _ = window.unminimize();
                             let _ = window.set_focus();
-                            let _ = window.center();
                         }
+                    }
+                }
+            })?;
+
+            // 注册全局快捷键 Ctrl+K 打开快捷搜索
+            let search_shortcut = "Control+K".parse::<Shortcut>().unwrap();
+            app.global_shortcut().on_shortcut(search_shortcut, |app, _shortcut, event| {
+                if event.state == ShortcutState::Pressed {
+                    // 检查搜索窗口是否已存在
+                    if let Some(window) = app.get_webview_window("search") {
+                        // 窗口已存在，聚焦它
+                        let _ = window.show();
+                        let _ = window.set_focus();
+                    } else {
+                        // 创建新的搜索窗口
+                        let url = if cfg!(debug_assertions) {
+                            WebviewUrl::External("http://localhost:1420/search.html".parse().unwrap())
+                        } else {
+                            WebviewUrl::App("search.html".into())
+                        };
+
+                        let _ = WebviewWindowBuilder::new(app, "search", url)
+                            .title("快捷搜索")
+                            .inner_size(600.0, 68.0)  // 初始只显示搜索框高度
+                            .max_inner_size(600.0, 500.0)
+                            .resizable(false)
+                            .decorations(false)
+                            .transparent(true)
+                            .always_on_top(true)
+                            .center()
+                            .skip_taskbar(true)
+                            .build();
+                    }
+                }
+            })?;
+
+            // 注册全局快捷键 Alt+N 打开快捷便签
+            let notes_shortcut = "Alt+N".parse::<Shortcut>().unwrap();
+            app.global_shortcut().on_shortcut(notes_shortcut, |app, _shortcut, event| {
+                if event.state == ShortcutState::Pressed {
+                    // 检查便签窗口是否已存在
+                    if let Some(window) = app.get_webview_window("notes") {
+                        // 窗口已存在，聚焦它
+                        let _ = window.show();
+                        let _ = window.set_focus();
+                    } else {
+                        // 创建新的便签窗口
+                        let url = if cfg!(debug_assertions) {
+                            WebviewUrl::External("http://localhost:1420/notes.html".parse().unwrap())
+                        } else {
+                            WebviewUrl::App("notes.html".into())
+                        };
+
+                        let _ = WebviewWindowBuilder::new(app, "notes", url)
+                            .title("快捷便签")
+                            .inner_size(700.0, 500.0)
+                            .resizable(true)
+                            .min_inner_size(500.0, 400.0)
+                            .decorations(false)
+                            .transparent(true)
+                            .always_on_top(true)
+                            .center()
+                            .build();
                     }
                 }
             })?;
