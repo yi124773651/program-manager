@@ -1,6 +1,18 @@
 use crate::models::{App, AppState, Category, Config};
-use std::time::{SystemTime, UNIX_EPOCH};
+use serde::Serialize;
+use std::time::{Instant, SystemTime, UNIX_EPOCH};
 use tauri::State;
+
+/// 动作执行结果
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ActionResult {
+    pub success: bool,
+    pub output: String,
+    pub error_output: String,
+    pub exit_code: i32,
+    pub execution_time: u64,
+}
 
 #[tauri::command]
 pub fn load_config(state: State<AppState>) -> Result<Config, String> {
@@ -255,13 +267,15 @@ pub fn execute_action_template(
     script_content: String,
     app_path: String,
     app_name: String,
-) -> Result<String, String> {
+) -> Result<ActionResult, String> {
     #[cfg(target_os = "windows")]
     {
         use std::os::windows::process::CommandExt;
         use std::process::Command;
 
         const CREATE_NO_WINDOW: u32 = 0x08000000;
+
+        let start_time = Instant::now();
 
         let output = Command::new("powershell")
             .args(&["-NoProfile", "-Command", &script_content])
@@ -271,14 +285,19 @@ pub fn execute_action_template(
             .output()
             .map_err(|e| format!("执行失败: {}", e))?;
 
+        let execution_time = start_time.elapsed().as_millis() as u64;
         let stdout = String::from_utf8_lossy(&output.stdout).to_string();
         let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+        let exit_code = output.status.code().unwrap_or(-1);
+        let success = output.status.success();
 
-        if !output.status.success() && !stderr.is_empty() {
-            return Err(stderr);
-        }
-
-        Ok(stdout)
+        Ok(ActionResult {
+            success,
+            output: stdout,
+            error_output: stderr,
+            exit_code,
+            execution_time,
+        })
     }
 
     #[cfg(not(target_os = "windows"))]
