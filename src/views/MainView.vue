@@ -101,6 +101,7 @@ import Sortable from 'sortablejs'
 declare global {
   interface Window {
     __dragDropUnlisten?: UnlistenFn | null
+    __dropLock?: boolean  // 全局拖拽锁
   }
 }
 
@@ -110,6 +111,7 @@ const searchQuery = ref('')
 const appsGridRef = ref<HTMLElement | null>(null)
 const sortableInstance = ref<any>(null)
 const isDragging = ref(false)
+// 注意：dropLock 已移至 window.__dropLock，确保跨 HMR 重载持久化
 const currentApps = computed(() => appStore.currentApps)
 const cardSize = computed(() => appStore.settings.cardSize)
 const currentCategoryName = computed(() => {
@@ -132,7 +134,10 @@ const setCardSize = (size: 'small' | 'medium' | 'large') => {
 
 // 处理 Tauri 文件拖拽（核心逻辑）
 const processDroppedFiles = async (paths: string[]) => {
-  if (!paths || paths.length === 0) return
+  if (!paths || paths.length === 0) {
+    window.__dropLock = false
+    return
+  }
 
   console.log('处理拖拽文件:', paths)
 
@@ -174,11 +179,10 @@ const processDroppedFiles = async (paths: string[]) => {
     await showAddResults(results)
   } catch (error) {
     console.error('拖拽处理错误:', error)
+  } finally {
+    window.__dropLock = false
   }
 }
-
-// 使用防抖包装拖拽处理函数，300ms 内的重复触发会被忽略
-const handleTauriFileDrop = useDebounceFn(processDroppedFiles, 300)
 
 // 初始化 Tauri 拖拽事件监听
 const initTauriDragDrop = async () => {
@@ -199,8 +203,17 @@ const initTauriDragDrop = async () => {
         isDragging.value = false
       } else if (event.payload.type === 'drop') {
         isDragging.value = false
-        // 防抖函数会自动处理重复触发
-        handleTauriFileDrop(event.payload.paths)
+
+        // 使用 window 上的全局锁防止重复处理
+        if (window.__dropLock) {
+          return
+        }
+
+        // 立即设置锁
+        window.__dropLock = true
+
+        // 直接调用处理函数
+        processDroppedFiles(event.payload.paths)
       }
     })
 

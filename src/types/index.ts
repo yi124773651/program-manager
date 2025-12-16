@@ -161,6 +161,11 @@ export interface SceneAction {
     processName?: string // close_app (备选)
     seconds?: number    // delay
     message?: string    // notify
+    // 启动动作的附属选项
+    waitWindow?: boolean   // launch, launch_admin: 是否等待窗口出现
+    waitTimeout?: number   // launch, launch_admin: 等待超时秒数
+    sendKeys?: string      // launch, launch_admin: 启动后发送按键
+    delayAfter?: number    // launch, launch_admin: 启动后延迟秒数
   }
 }
 
@@ -191,20 +196,23 @@ export const SCENE_ACTION_TYPES: {
   needsUrl?: boolean
   needsSeconds?: boolean
   needsMessage?: boolean
+  hasLaunchOptions?: boolean  // 是否有启动附属选项（等待窗口、发送按键）
 }[] = [
   {
     type: 'launch',
     name: '启动程序',
-    description: '从已添加的应用中选择并启动',
+    description: '程序未运行时启动，可选等待窗口和发送按键',
     icon: 'play',
-    needsApp: true
+    needsApp: true,
+    hasLaunchOptions: true
   },
   {
     type: 'launch_admin',
     name: '管理员启动',
-    description: '以管理员权限启动程序',
+    description: '以管理员权限启动，可选等待窗口和发送按键',
     icon: 'shield',
-    needsApp: true
+    needsApp: true,
+    hasLaunchOptions: true
   },
   {
     type: 'open_url',
@@ -230,7 +238,7 @@ export const SCENE_ACTION_TYPES: {
   {
     type: 'close_app',
     name: '关闭程序',
-    description: '结束指定程序的所有进程',
+    description: '程序运行中才关闭，未运行则跳过',
     icon: 'x-circle',
     needsApp: true
   },

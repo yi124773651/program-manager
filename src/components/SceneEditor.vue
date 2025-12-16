@@ -146,7 +146,7 @@
                       :class="{ selected: actionParams.appId === app.id }"
                       @click="actionParams.appId = app.id"
                     >
-                      <img v-if="app.icon" :src="app.icon" class="app-icon" />
+                      <img v-if="app.iconUrl" :src="app.iconUrl" class="app-icon" />
                       <div v-else class="app-icon-placeholder">
                         <FileIcon :size="14" />
                       </div>
@@ -186,6 +186,49 @@
               <label>通知内容</label>
               <input v-model="actionParams.message" type="text" class="config-input" placeholder="场景执行完成" />
             </div>
+
+            <!-- 启动动作的附属选项 -->
+            <div v-if="selectedActionType?.hasLaunchOptions" class="launch-options">
+              <div class="options-header" @click="showLaunchOptions = !showLaunchOptions">
+                <component :is="showLaunchOptions || hasLaunchOptionsSet ? ChevronDownIcon : ChevronRightIcon" :size="16" />
+                <span>高级选项（可选）</span>
+                <span v-if="hasLaunchOptionsSet" class="options-badge">已设置</span>
+              </div>
+
+              <div v-show="showLaunchOptions || hasLaunchOptionsSet" class="options-body">
+                <!-- 等待窗口 -->
+                <div class="config-field checkbox-field">
+                  <label class="checkbox-label">
+                    <input type="checkbox" v-model="actionParams.waitWindow" />
+                    <span>等待窗口出现</span>
+                  </label>
+                  <div class="field-hint">启动后等待程序窗口出现再执行后续动作</div>
+                </div>
+
+                <!-- 等待超时时间（仅当等待窗口启用时显示） -->
+                <div v-if="actionParams.waitWindow" class="config-field sub-field">
+                  <label>超时时间（秒）</label>
+                  <input v-model.number="actionParams.waitTimeout" type="number" class="config-input" min="1" max="300" />
+                </div>
+
+                <!-- 发送按键 -->
+                <div class="config-field">
+                  <label>启动后发送按键</label>
+                  <input v-model="actionParams.sendKeys" type="text" class="config-input" placeholder="可选，如 {F11} 或 ^n" />
+                  <div class="field-hint">
+                    特殊键：{F1}-{F12}、{ENTER}、{TAB}、{ESC}、{DELETE}<br>
+                    修饰键：^ (Ctrl)、+ (Shift)、% (Alt)，如 ^c 表示 Ctrl+C
+                  </div>
+                </div>
+
+                <!-- 启动后延迟 -->
+                <div class="config-field">
+                  <label>启动后延迟（秒）</label>
+                  <input v-model.number="actionParams.delayAfter" type="number" class="config-input" min="0" max="60" placeholder="0" />
+                  <div class="field-hint">启动后等待指定秒数再执行下一个动作</div>
+                </div>
+              </div>
+            </div>
           </div>
           <div class="config-footer">
             <button class="btn-cancel" @click="cancelActionConfig">取消</button>
@@ -201,7 +244,7 @@
 import { ref, reactive, computed, onMounted, nextTick, watch } from 'vue'
 import { useScenesStore } from '@/stores/scenesStore'
 import { useAppStore } from '@/stores/appStore'
-import { XIcon, PlusIcon, TrashIcon, GripVerticalIcon, PlayIcon, ArrowLeftIcon, ZapIcon, RocketIcon, ShieldIcon, GlobeIcon, FolderOpenIcon, FileIcon, XCircleIcon, ClockIcon, BellIcon } from 'lucide-vue-next'
+import { XIcon, PlusIcon, TrashIcon, GripVerticalIcon, PlayIcon, ArrowLeftIcon, ZapIcon, RocketIcon, ShieldIcon, GlobeIcon, FolderOpenIcon, FileIcon, XCircleIcon, ClockIcon, BellIcon, ChevronDownIcon, ChevronRightIcon } from 'lucide-vue-next'
 import { open } from '@tauri-apps/plugin-dialog'
 import type { Scene, SceneAction, SceneActionType, App } from '@/types'
 import { SCENE_ICONS, SCENE_ACTION_TYPES } from '@/types'
@@ -221,17 +264,35 @@ const selectedActionType = ref<typeof SCENE_ACTION_TYPES[number] | null>(null)
 const actionsListRef = ref<HTMLElement | null>(null)
 const sortableInstance = ref<any>(null)
 
-const actionParams = reactive({ appId: '', url: '', path: '', seconds: 2, message: '' })
+const actionParams = reactive({
+  appId: '', url: '', path: '', seconds: 2, message: '',
+  // 启动动作的附属选项
+  waitWindow: false, waitTimeout: 30, sendKeys: '', delayAfter: 0
+})
 
-// 按分类组织的应用列表
+// 高级选项是否展开
+const showLaunchOptions = ref(false)
+
+// 检查是否有设置高级选项
+const hasLaunchOptionsSet = computed(() => {
+  return actionParams.waitWindow || actionParams.sendKeys || (actionParams.delayAfter && actionParams.delayAfter > 0)
+})
+
+// 按分类组织的应用列表（使用缓存的图标URL）
 const appCategories = computed(() => {
   const categories = appStore.categories
   return categories.map(cat => ({
     id: cat.id,
     name: cat.name,
     apps: cat.apps
-      .map(appId => appStore.config.apps[appId])
-      .filter((app): app is App => app !== undefined)
+      .map(appId => {
+        const app = appStore.config.apps[appId]
+        if (!app) return null
+        // 使用缓存的图标URL
+        const iconUrl = appStore.iconUrlCache[app.id] || (app.icon?.startsWith('data:') ? app.icon : undefined)
+        return { ...app, iconUrl }
+      })
+      .filter((app): app is App & { iconUrl: string | undefined } => app !== null)
   })).filter(cat => cat.apps.length > 0)
 })
 
@@ -259,8 +320,19 @@ function getActionTypeName(type: SceneActionType): string {
 }
 
 function getActionDetail(action: SceneAction): string {
+  let detail = ''
   switch (action.type) {
-    case 'launch': case 'launch_admin': case 'close_app':
+    case 'launch': case 'launch_admin': {
+      detail = action.params.appId ? (appStore.config.apps[action.params.appId]?.name || '未知应用') : '未指定'
+      // 显示附属选项
+      const extras: string[] = []
+      if (action.params.waitWindow) extras.push('等待窗口')
+      if (action.params.sendKeys) extras.push(`按键:${action.params.sendKeys}`)
+      if (action.params.delayAfter) extras.push(`延迟:${action.params.delayAfter}s`)
+      if (extras.length > 0) detail += ` [${extras.join(', ')}]`
+      return detail
+    }
+    case 'close_app':
       return action.params.appId ? (appStore.config.apps[action.params.appId]?.name || '未知应用') : '未指定'
     case 'open_url': return action.params.url || '未指定'
     case 'open_folder': case 'open_file': return action.params.path || '未指定'
@@ -284,7 +356,11 @@ function selectActionType(actionType: typeof SCENE_ACTION_TYPES[number]) {
   selectedActionType.value = actionType
   showActionPicker.value = false
   showActionConfig.value = true
-  Object.assign(actionParams, { appId: '', url: '', path: '', seconds: 2, message: '' })
+  showLaunchOptions.value = false
+  Object.assign(actionParams, {
+    appId: '', url: '', path: '', seconds: 2, message: '',
+    waitWindow: false, waitTimeout: 30, sendKeys: '', delayAfter: 0
+  })
 }
 
 function backToActionPicker() {
@@ -307,7 +383,18 @@ function confirmAddAction() {
   if (!selectedActionType.value || !isActionValid.value) return
   const newAction = scenesStore.addActionToScene(localScene.id, {
     type: selectedActionType.value.type,
-    params: { appId: actionParams.appId || undefined, url: actionParams.url || undefined, path: actionParams.path || undefined, seconds: actionParams.seconds || undefined, message: actionParams.message || undefined }
+    params: {
+      appId: actionParams.appId || undefined,
+      url: actionParams.url || undefined,
+      path: actionParams.path || undefined,
+      seconds: actionParams.seconds || undefined,
+      message: actionParams.message || undefined,
+      // 启动动作的附属选项
+      waitWindow: actionParams.waitWindow || undefined,
+      waitTimeout: actionParams.waitWindow ? actionParams.waitTimeout : undefined,
+      sendKeys: actionParams.sendKeys || undefined,
+      delayAfter: actionParams.delayAfter && actionParams.delayAfter > 0 ? actionParams.delayAfter : undefined
+    }
   })
   if (newAction) localScene.actions.push(newAction)
   showActionConfig.value = false
@@ -446,6 +533,9 @@ onMounted(() => nextTick(initSortable))
 .slide-up-enter-from, .slide-up-leave-to { opacity: 0; }
 .slide-up-enter-from .action-picker, .slide-up-leave-to .action-picker, .slide-up-enter-from .action-config, .slide-up-leave-to .action-config { transform: scale(0.95); opacity: 0; }
 
+/* 字段提示样式 */
+.field-hint { margin-top: 6px; font-size: 11px; color: var(--text-secondary); line-height: 1.5; }
+
 /* 应用树形结构样式 */
 .app-tree { max-height: 300px; overflow-y: auto; border: 1px solid var(--border-color); border-radius: 8px; background: var(--bg-secondary); }
 .app-tree-category { border-bottom: 1px solid var(--border-color); }
@@ -461,4 +551,16 @@ onMounted(() => nextTick(initSortable))
 .app-item.selected .app-icon-placeholder { background: rgba(255,255,255,0.2); color: white; }
 .app-name { font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .empty-apps { padding: 20px; text-align: center; color: var(--text-secondary); font-size: 13px; }
+
+/* 启动动作附属选项样式 */
+.launch-options { margin-top: 16px; padding-top: 16px; border-top: 1px dashed var(--border-color); }
+.launch-options .options-header { display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 600; color: var(--text-secondary); cursor: pointer; padding: 8px 0; transition: color 0.2s; }
+.launch-options .options-header:hover { color: var(--text-primary); }
+.launch-options .options-badge { font-size: 11px; font-weight: 500; background: var(--primary-color); color: white; padding: 2px 8px; border-radius: 10px; margin-left: auto; }
+.launch-options .options-body { padding-top: 12px; }
+.checkbox-field { margin-bottom: 12px; }
+.checkbox-label { display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 14px; font-weight: 500; color: var(--text-primary); }
+.checkbox-label input[type="checkbox"] { width: 18px; height: 18px; cursor: pointer; accent-color: var(--primary-color); }
+.sub-field { margin-left: 26px; margin-top: 8px; margin-bottom: 16px; }
+.sub-field .config-input { padding: 10px 12px; }
 </style>

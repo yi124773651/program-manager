@@ -65,6 +65,11 @@ fn main() {
             execute_action_template,
             // 应用操作命令
             launch_app_as_admin,
+            // 进程检测命令
+            is_process_running,
+            // 场景动作命令
+            send_keys,
+            wait_for_window,
         ])
         .setup(|app| {
             // 处理启动时的命令行参数

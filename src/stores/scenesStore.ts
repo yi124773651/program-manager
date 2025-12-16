@@ -91,8 +91,68 @@ export const useScenesStore = defineStore('scenes', {
       return false
     },
 
+    // 从应用路径提取进程名
+    getProcessNameFromApp(appId: string): string | null {
+      const appStore = useAppStore()
+      const app = appStore.config.apps[appId]
+      if (!app) return null
+      // 从路径提取进程名（不含.exe）
+      const fileName = app.path.split('\\').pop() || app.path.split('/').pop() || ''
+      return fileName.replace(/\.exe$/i, '')
+    },
+
+    // 执行启动后的附属操作（等待窗口、发送按键、延迟）
+    async executeLaunchOptions(action: SceneAction, processName: string): Promise<{ success: boolean; error?: string }> {
+      // 等待窗口出现
+      if (action.params.waitWindow) {
+        const timeout = action.params.waitTimeout || 30
+        const found = await invoke<boolean>('wait_for_window', {
+          title: processName,
+          timeoutSecs: timeout
+        })
+        if (!found) {
+          return { success: false, error: '等待窗口超时' }
+        }
+      }
+
+      // 发送按键
+      if (action.params.sendKeys) {
+        // 先激活窗口
+        await invoke('execute_action_template', {
+          scriptContent: `
+$process = Get-Process -Name "${processName}" -ErrorAction SilentlyContinue | Select-Object -First 1
+if ($process) {
+  $hwnd = $process.MainWindowHandle
+  if ($hwnd -ne [IntPtr]::Zero) {
+    Add-Type @"
+    using System;
+    using System.Runtime.InteropServices;
+    public class WindowHelper {
+      [DllImport("user32.dll")]
+      public static extern bool SetForegroundWindow(IntPtr hWnd);
+    }
+"@
+    [WindowHelper]::SetForegroundWindow($hwnd)
+    Start-Sleep -Milliseconds 200
+  }
+}`,
+          appPath: '',
+          appName: ''
+        })
+        // 发送按键
+        await invoke('send_keys', { keys: action.params.sendKeys })
+      }
+
+      // 启动后延迟
+      if (action.params.delayAfter && action.params.delayAfter > 0) {
+        await new Promise(resolve => setTimeout(resolve, action.params.delayAfter! * 1000))
+      }
+
+      return { success: true }
+    },
+
     // 执行单个动作
-    async executeAction(action: SceneAction): Promise<{ success: boolean; error?: string }> {
+    async executeAction(action: SceneAction): Promise<{ success: boolean; error?: string; skipped?: boolean }> {
       const appStore = useAppStore()
 
       try {
@@ -105,7 +165,26 @@ export const useScenesStore = defineStore('scenes', {
             if (!app) {
               return { success: false, error: '应用不存在' }
             }
+            // 智能启动：检查进程是否已运行
+            const processName = this.getProcessNameFromApp(action.params.appId)
+            if (processName) {
+              const isRunning = await invoke<boolean>('is_process_running', { processName })
+              if (isRunning) {
+                // 已运行但有发送按键，则激活窗口并发送
+                if (action.params.sendKeys) {
+                  await this.executeLaunchOptions(action, processName)
+                }
+                return { success: true, skipped: true }
+              }
+            }
             await appStore.launchApp(action.params.appId)
+            // 执行附属操作
+            if (processName && (action.params.waitWindow || action.params.sendKeys)) {
+              const result = await this.executeLaunchOptions(action, processName)
+              if (!result.success) {
+                return result
+              }
+            }
             return { success: true }
           }
 
@@ -117,11 +196,30 @@ export const useScenesStore = defineStore('scenes', {
             if (!app) {
               return { success: false, error: '应用不存在' }
             }
+            // 智能启动：检查进程是否已运行
+            const processName = this.getProcessNameFromApp(action.params.appId)
+            if (processName) {
+              const isRunning = await invoke<boolean>('is_process_running', { processName })
+              if (isRunning) {
+                // 已运行但有发送按键，则激活窗口并发送
+                if (action.params.sendKeys) {
+                  await this.executeLaunchOptions(action, processName)
+                }
+                return { success: true, skipped: true }
+              }
+            }
             await invoke('execute_action_template', {
               scriptContent: 'Start-Process -FilePath $env:APP_PATH -Verb RunAs',
               appPath: app.path,
               appName: app.name
             })
+            // 执行附属操作
+            if (processName && (action.params.waitWindow || action.params.sendKeys)) {
+              const result = await this.executeLaunchOptions(action, processName)
+              if (!result.success) {
+                return result
+              }
+            }
             return { success: true }
           }
 
@@ -168,15 +266,17 @@ export const useScenesStore = defineStore('scenes', {
 
             let processName = action.params.processName
             if (!processName && action.params.appId) {
-              const app = appStore.config.apps[action.params.appId]
-              if (app) {
-                // 从路径提取进程名
-                processName = app.path.split('\\').pop()?.replace('.exe', '') || ''
-              }
+              processName = this.getProcessNameFromApp(action.params.appId) || ''
             }
 
             if (!processName) {
               return { success: false, error: '无法确定进程名' }
+            }
+
+            // 智能关闭：检查进程是否正在运行
+            const isRunning = await invoke<boolean>('is_process_running', { processName })
+            if (!isRunning) {
+              return { success: true, skipped: true }
             }
 
             await invoke('execute_action_template', {
