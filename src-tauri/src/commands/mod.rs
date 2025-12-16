@@ -59,11 +59,14 @@ pub fn add_app(
         .unwrap()
         .as_secs();
 
-    // 提取图标
-    let icon = crate::utils::icon_extractor::extract_icon_from_exe(&path).ok();
+    // 生成应用 ID
+    let app_id = uuid::Uuid::new_v4().to_string();
+
+    // 提取图标并保存到文件（新方式）
+    let icon = crate::utils::icon_extractor::extract_icon_to_file(&path, &app_id).ok();
 
     let app = App {
-        id: uuid::Uuid::new_v4().to_string(),
+        id: app_id,
         name,
         path,
         category: category_id.clone(),
@@ -89,6 +92,15 @@ pub fn delete_app(app_id: String, state: State<AppState>) -> Result<(), String> 
     if let Some(app) = config.apps.remove(&app_id) {
         if let Some(category) = config.categories.get_mut(&app.category) {
             category.apps.retain(|id| id != &app_id);
+        }
+
+        // 删除图标文件
+        if let Some(ref icon_filename) = app.icon {
+            // 如果是文件名格式（不是 base64），删除文件
+            if !icon_filename.starts_with("data:") {
+                let icon_path = crate::utils::config::get_icon_path(icon_filename);
+                let _ = std::fs::remove_file(icon_path);
+            }
         }
     }
 
@@ -134,6 +146,12 @@ pub fn launch_app(app_id: String, state: State<AppState>) -> Result<(), String> 
 #[tauri::command]
 pub fn extract_icon(exe_path: String) -> Result<String, String> {
     crate::utils::icon_extractor::extract_icon_from_exe(&exe_path)
+}
+
+/// 获取图标目录路径
+#[tauri::command]
+pub fn get_icons_dir() -> String {
+    crate::utils::config::get_icons_dir().to_string_lossy().to_string()
 }
 
 #[tauri::command]

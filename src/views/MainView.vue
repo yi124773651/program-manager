@@ -118,8 +118,13 @@ const currentCategoryName = computed(() => {
 })
 
 const handleSearch = () => {
-  appStore.setSearchQuery(searchQuery.value)
+  debouncedSetSearchQuery()
 }
+
+// 使用防抖来处理搜索输入
+const debouncedSetSearchQuery = useDebounceFn(() => {
+  appStore.setSearchQuery(searchQuery.value)
+}, 150)
 
 const setCardSize = (size: 'small' | 'medium' | 'large') => {
   appStore.updateSettings({ cardSize: size })

@@ -7,6 +7,9 @@ import { invoke } from '@tauri-apps/api/core'
 import { open } from '@tauri-apps/plugin-shell'
 import { writeText } from '@tauri-apps/plugin-clipboard-manager'
 
+// 搜索防抖延迟（ms）
+const SEARCH_DEBOUNCE_DELAY = 150
+
 export const useSearchStore = defineStore('search', {
   state: () => ({
     query: '',
@@ -14,7 +17,9 @@ export const useSearchStore = defineStore('search', {
     results: [] as SearchResult[],
     selectedIndex: 0,
     isLoading: false,
-    defaultSearchEngine: 'baidu'
+    defaultSearchEngine: 'baidu',
+    // 搜索防抖相关
+    searchTimeout: null as number | null
   }),
 
   getters: {
@@ -62,6 +67,33 @@ export const useSearchStore = defineStore('search', {
       }
     },
 
+    // 带防抖的搜索（供外部调用）
+    debouncedSearch(query: string) {
+      this.query = query
+
+      if (!query.trim()) {
+        this.results = []
+        this.selectedIndex = 0
+        if (this.searchTimeout) {
+          clearTimeout(this.searchTimeout)
+          this.searchTimeout = null
+        }
+        return
+      }
+
+      // 清除之前的定时器
+      if (this.searchTimeout) {
+        clearTimeout(this.searchTimeout)
+      }
+
+      // 设置新的定时器
+      this.searchTimeout = window.setTimeout(() => {
+        this.performSearch(query)
+        this.searchTimeout = null
+      }, SEARCH_DEBOUNCE_DELAY)
+    },
+
+    // 立即搜索（不防抖，用于特殊场景）
     async search(query: string) {
       this.query = query
       this.selectedIndex = 0
@@ -71,6 +103,12 @@ export const useSearchStore = defineStore('search', {
         return
       }
 
+      await this.performSearch(query)
+    },
+
+    // 实际执行搜索的内部方法
+    async performSearch(query: string) {
+      this.selectedIndex = 0
       this.isLoading = true
       const appStore = useAppStore()
       const settings = appStore.settings
@@ -96,13 +134,18 @@ export const useSearchStore = defineStore('search', {
             results.push(...this.getWebSearchResults(searchQuery))
           }
         } else if (query.startsWith('c:')) {
-          // 剪贴板搜索
-          const searchQuery = query.slice(2).trim()
-          results.push(...this.searchClipboard(searchQuery))
+          // 剪贴板搜索 - 检查剪贴板历史功能是否启用
+          if (settings.clipboardHistoryEnabled !== false) {
+            const searchQuery = query.slice(2).trim()
+            results.push(...this.searchClipboard(searchQuery))
+          }
         } else {
           // 默认：搜索应用 + 剪贴板 + 网页建议
           results.push(...this.searchApps(query))
-          results.push(...this.searchClipboard(query).slice(0, 3))
+          // 只有在剪贴板历史启用时才搜索剪贴板
+          if (settings.clipboardHistoryEnabled !== false) {
+            results.push(...this.searchClipboard(query).slice(0, 3))
+          }
           results.push(...this.getWebSearchResults(query).slice(0, 1))
         }
 

@@ -55,6 +55,7 @@ fn main() {
             delete_app,
             launch_app,
             extract_icon,
+            get_icons_dir,
             open_file_location,
             register_context_menu,
             unregister_context_menu,

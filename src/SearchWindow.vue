@@ -191,7 +191,7 @@ import type { SearchResult, SearchResultType } from '@/types/search'
 const appStore = useAppStore()
 const searchStore = useSearchStore()
 const { query, results, selectedIndex, isLoading } = storeToRefs(searchStore)
-const { search, selectNext, selectPrev, selectIndex, executeResult } = searchStore
+const { debouncedSearch, selectNext, selectPrev, selectIndex, executeResult } = searchStore
 
 const inputRef = ref<HTMLInputElement | null>(null)
 
@@ -225,7 +225,7 @@ const getGlobalIndex = (type: SearchResultType, localIndex: number): number => {
 }
 
 const handleSearch = () => {
-  search(query.value)
+  debouncedSearch(query.value)
 }
 
 const closeWindow = async () => {

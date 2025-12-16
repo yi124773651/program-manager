@@ -9,10 +9,11 @@
     <!-- 图标 -->
     <div class="icon-wrapper" style="pointer-events: none;">
       <img
-        v-if="app.icon"
-        :src="app.icon"
+        v-if="iconUrl"
+        :src="iconUrl"
         :alt="app.name"
         class="app-icon"
+        loading="lazy"
         @error="handleIconError"
       />
       <div v-else class="icon-placeholder">
@@ -128,7 +129,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useAppStore } from '@/stores/appStore'
 import { useActionsStore } from '@/stores/actionsStore'
 import {
@@ -162,6 +163,43 @@ const showActionsManager = ref(false)
 const menuStyle = ref({})
 const iconError = ref(false)
 
+// 图标 URL（从缓存或异步加载）
+const iconUrl = ref<string | undefined>(undefined)
+
+// 加载图标 URL
+const loadIconUrl = async () => {
+  // 先检查缓存
+  if (appStore.iconUrlCache[props.app.id]) {
+    iconUrl.value = appStore.iconUrlCache[props.app.id]
+    return
+  }
+
+  // 如果是 base64 格式，直接使用
+  if (props.app.icon?.startsWith('data:')) {
+    iconUrl.value = props.app.icon
+    return
+  }
+
+  // 异步加载
+  if (props.app.icon) {
+    const url = await appStore.getAppIconUrl(props.app.id)
+    iconUrl.value = url
+  }
+}
+
+// 监听 app 变化重新加载图标
+watch(() => props.app.id, loadIconUrl, { immediate: true })
+
+// 监听缓存变化
+watch(
+  () => appStore.iconUrlCache[props.app.id],
+  (newUrl) => {
+    if (newUrl) {
+      iconUrl.value = newUrl
+    }
+  }
+)
+
 const sizeClass = computed(() => `size-${props.size}`)
 const iconSize = computed(() => CARD_SIZES[props.size].iconSize)
 
@@ -175,11 +213,14 @@ const actionGroups = ACTION_GROUPS
 // 初始化 actionsStore
 onMounted(() => {
   actionsStore.init()
-  document.addEventListener('click', handleClickOutside)
+  // 不再在每个卡片上注册全局监听器，而是在显示菜单时添加
 })
 
 onUnmounted(() => {
-  document.removeEventListener('click', handleClickOutside)
+  // 清理（如果菜单打开时组件被销毁）
+  if (showMenu.value) {
+    document.removeEventListener('click', handleClickOutside)
+  }
 })
 
 function getGroupActions(groupId: ActionGroup) {
@@ -220,6 +261,9 @@ const showContextMenu = (event: MouseEvent) => {
   event.stopPropagation()
   showMenu.value = true
 
+  // 只在菜单显示时添加全局监听器
+  document.addEventListener('click', handleClickOutside)
+
   menuStyle.value = {
     left: `${event.clientX}px`,
     top: `${event.clientY}px`,
@@ -228,6 +272,8 @@ const showContextMenu = (event: MouseEvent) => {
 
 const hideMenu = () => {
   showMenu.value = false
+  // 菜单关闭时移除监听器
+  document.removeEventListener('click', handleClickOutside)
 }
 
 const handleClickOutside = () => {

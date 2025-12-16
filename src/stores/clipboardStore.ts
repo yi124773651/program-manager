@@ -2,6 +2,16 @@ import { defineStore } from 'pinia'
 import { readText, writeText } from '@tauri-apps/plugin-clipboard-manager'
 import type { ClipboardItem } from '@/types'
 import { useAppStore } from './appStore'
+import { watch } from 'vue'
+
+// 剪贴板内容最大长度限制（10KB）
+const MAX_CONTENT_LENGTH = 10 * 1024
+
+// 防抖保存延迟（ms）
+const SAVE_DEBOUNCE_DELAY = 1000
+
+// 轮询间隔（ms）- 从 500ms 优化到 1200ms
+const POLLING_INTERVAL = 1200
 
 export const useClipboardStore = defineStore('clipboard', {
   state: () => ({
@@ -10,7 +20,11 @@ export const useClipboardStore = defineStore('clipboard', {
     isMonitoring: true,
     lastContent: '',
     pollingInterval: null as number | null,
-    maxItems: 100
+    maxItems: 100,
+    settingsWatcherSetup: false,
+    // 防抖保存相关
+    saveTimeout: null as number | null,
+    isDirty: false
   }),
 
   getters: {
@@ -49,6 +63,27 @@ export const useClipboardStore = defineStore('clipboard', {
       if (this.isEnabled) {
         this.startMonitoring()
       }
+
+      // 设置设置变化监听器（只设置一次）
+      if (!this.settingsWatcherSetup) {
+        this.settingsWatcherSetup = true
+        this.setupSettingsWatcher()
+      }
+    },
+
+    // 监听设置变化，动态启停剪贴板监控
+    setupSettingsWatcher() {
+      const appStore = useAppStore()
+      watch(
+        () => [appStore.settings.quickerEnabled, appStore.settings.clipboardHistoryEnabled],
+        () => {
+          if (this.isEnabled) {
+            this.startMonitoring()
+          } else {
+            this.stopMonitoring()
+          }
+        }
+      )
     },
 
     loadFromStorage() {
@@ -70,15 +105,37 @@ export const useClipboardStore = defineStore('clipboard', {
           items: this.items,
           maxItems: this.maxItems
         }))
+        this.isDirty = false
       } catch (error) {
         console.error('保存剪贴板历史失败:', error)
       }
     },
 
+    // 防抖保存 - 避免频繁写入 localStorage
+    debouncedSave() {
+      this.isDirty = true
+      if (this.saveTimeout) {
+        clearTimeout(this.saveTimeout)
+      }
+      this.saveTimeout = window.setTimeout(() => {
+        this.saveToStorage()
+        this.saveTimeout = null
+      }, SAVE_DEBOUNCE_DELAY)
+    },
+
+    // 立即保存（用于重要操作如删除、清空）
+    saveNow() {
+      if (this.saveTimeout) {
+        clearTimeout(this.saveTimeout)
+        this.saveTimeout = null
+      }
+      this.saveToStorage()
+    },
+
     startMonitoring() {
       if (this.pollingInterval) return
 
-      // 每 500ms 检查一次剪贴板变化
+      // 优化后的轮询间隔
       this.pollingInterval = window.setInterval(async () => {
         if (!this.isMonitoring) return
 
@@ -91,7 +148,7 @@ export const useClipboardStore = defineStore('clipboard', {
         } catch (error) {
           // 剪贴板可能为空或不可读，忽略错误
         }
-      }, 500)
+      }, POLLING_INTERVAL)
     },
 
     stopMonitoring() {
@@ -99,9 +156,19 @@ export const useClipboardStore = defineStore('clipboard', {
         clearInterval(this.pollingInterval)
         this.pollingInterval = null
       }
+      // 停止监控时，如果有未保存的数据，立即保存
+      if (this.isDirty) {
+        this.saveNow()
+      }
     },
 
     async addItem(content: string) {
+      // 内容长度限制
+      if (content.length > MAX_CONTENT_LENGTH) {
+        console.log('剪贴板内容超过长度限制，跳过')
+        return
+      }
+
       // 检查是否已存在
       const existingIndex = this.items.findIndex(item => item.content === content)
       if (existingIndex !== -1) {
@@ -109,7 +176,7 @@ export const useClipboardStore = defineStore('clipboard', {
         const [existing] = this.items.splice(existingIndex, 1)
         existing.createdAt = Date.now()
         this.items.unshift(existing)
-        this.saveToStorage()
+        this.debouncedSave()
         return
       }
 
@@ -148,25 +215,25 @@ export const useClipboardStore = defineStore('clipboard', {
         }
       }
 
-      this.saveToStorage()
+      this.debouncedSave()
     },
 
     deleteItem(id: string) {
       this.items = this.items.filter(item => item.id !== id)
-      this.saveToStorage()
+      this.saveNow() // 删除操作立即保存
     },
 
     clearHistory() {
       // 保留置顶项
       this.items = this.items.filter(item => item.pinned)
-      this.saveToStorage()
+      this.saveNow() // 清空操作立即保存
     },
 
     togglePin(id: string) {
       const item = this.items.find(i => i.id === id)
       if (item) {
         item.pinned = !item.pinned
-        this.saveToStorage()
+        this.debouncedSave()
       }
     },
 
