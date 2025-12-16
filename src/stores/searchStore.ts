@@ -213,12 +213,14 @@ export const useSearchStore = defineStore('search', {
       for (const app of Object.values(appStore.config.apps)) {
         if (app.name.toLowerCase().includes(lowerQuery) ||
             app.path.toLowerCase().includes(lowerQuery)) {
+          // 使用缓存的图标 URL，而不是原始的 icon 值（可能是文件名）
+          const iconUrl = appStore.iconUrlCache[app.id] || (app.icon?.startsWith('data:') ? app.icon : undefined)
           results.push({
             id: `app-${app.id}`,
             type: 'app',
             title: app.name,
             subtitle: app.path,
-            icon: app.icon,
+            icon: iconUrl,
             data: app
           })
         }
