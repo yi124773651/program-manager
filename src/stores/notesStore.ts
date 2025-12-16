@@ -1,4 +1,5 @@
 import { defineStore } from 'pinia'
+import { useAppStore } from './appStore'
 
 export interface QuickNote {
   id: string
@@ -37,6 +38,13 @@ export const useNotesStore = defineStore('notes', {
   },
 
   actions: {
+    // 检查快捷便签是否启用
+    isEnabled(): boolean {
+      const appStore = useAppStore()
+      const settings = appStore.settings
+      return settings.quickerEnabled !== false && settings.quickNotesEnabled !== false
+    },
+
     init() {
       this.loadFromStorage()
     },
@@ -64,6 +72,9 @@ export const useNotesStore = defineStore('notes', {
     },
 
     open() {
+      // 检查功能是否启用
+      if (!this.isEnabled()) return
+
       this.isOpen = true
       // 如果没有便签，创建一个新的
       if (this.notes.length === 0) {

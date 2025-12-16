@@ -45,7 +45,17 @@ export const useSearchStore = defineStore('search', {
   },
 
   actions: {
+    // 检查快捷搜索是否启用
+    isEnabled(): boolean {
+      const appStore = useAppStore()
+      const settings = appStore.settings
+      return settings.quickerEnabled !== false && settings.spotlightSearchEnabled !== false
+    },
+
     open() {
+      // 检查功能是否启用
+      if (!this.isEnabled()) return
+
       this.isOpen = true
       this.query = ''
       this.results = []

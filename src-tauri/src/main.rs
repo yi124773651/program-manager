@@ -149,8 +149,20 @@ fn main() {
 
             // 注册全局快捷键 Alt+Space 切换窗口显示/隐藏
             let shortcut = "Alt+Space".parse::<Shortcut>().unwrap();
-            app.global_shortcut().on_shortcut(shortcut, |app, _shortcut, event| {
+            let app_handle_main = app.handle().clone();
+            app.global_shortcut().on_shortcut(shortcut, move |app, _shortcut, event| {
                 if event.state == ShortcutState::Pressed {
+                    // 检查设置是否启用
+                    let config = app_handle_main.state::<AppState>();
+                    let config_guard = config.config.lock().unwrap();
+                    let quicker_enabled = config_guard.settings.quicker_enabled.unwrap_or(true);
+                    let global_shortcut_enabled = config_guard.settings.global_shortcut_enabled.unwrap_or(true);
+                    drop(config_guard); // 释放锁
+
+                    if !quicker_enabled || !global_shortcut_enabled {
+                        return; // 功能被禁用
+                    }
+
                     if let Some(window) = app.get_webview_window("main") {
                         let is_visible = window.is_visible().unwrap_or(false);
                         let is_minimized = window.is_minimized().unwrap_or(false);
@@ -170,8 +182,20 @@ fn main() {
 
             // 注册全局快捷键 Ctrl+K 打开快捷搜索
             let search_shortcut = "Control+K".parse::<Shortcut>().unwrap();
-            app.global_shortcut().on_shortcut(search_shortcut, |app, _shortcut, event| {
+            let app_handle_search = app.handle().clone();
+            app.global_shortcut().on_shortcut(search_shortcut, move |app, _shortcut, event| {
                 if event.state == ShortcutState::Pressed {
+                    // 检查设置是否启用
+                    let config = app_handle_search.state::<AppState>();
+                    let config_guard = config.config.lock().unwrap();
+                    let quicker_enabled = config_guard.settings.quicker_enabled.unwrap_or(true);
+                    let spotlight_enabled = config_guard.settings.spotlight_search_enabled.unwrap_or(true);
+                    drop(config_guard); // 释放锁
+
+                    if !quicker_enabled || !spotlight_enabled {
+                        return; // 功能被禁用，不打开窗口
+                    }
+
                     // 检查搜索窗口是否已存在
                     if let Some(window) = app.get_webview_window("search") {
                         // 窗口已存在，聚焦它
@@ -202,8 +226,20 @@ fn main() {
 
             // 注册全局快捷键 Alt+N 打开快捷便签
             let notes_shortcut = "Alt+N".parse::<Shortcut>().unwrap();
-            app.global_shortcut().on_shortcut(notes_shortcut, |app, _shortcut, event| {
+            let app_handle_notes = app.handle().clone();
+            app.global_shortcut().on_shortcut(notes_shortcut, move |app, _shortcut, event| {
                 if event.state == ShortcutState::Pressed {
+                    // 检查设置是否启用
+                    let config = app_handle_notes.state::<AppState>();
+                    let config_guard = config.config.lock().unwrap();
+                    let quicker_enabled = config_guard.settings.quicker_enabled.unwrap_or(true);
+                    let notes_enabled = config_guard.settings.quick_notes_enabled.unwrap_or(true);
+                    drop(config_guard); // 释放锁
+
+                    if !quicker_enabled || !notes_enabled {
+                        return; // 功能被禁用，不打开窗口
+                    }
+
                     // 检查便签窗口是否已存在
                     if let Some(window) = app.get_webview_window("notes") {
                         // 窗口已存在，聚焦它
