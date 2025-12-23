@@ -25,9 +25,32 @@
 
 ## 📸 预览
 
+### 主界面与设置
+
 <div align="center">
   <img src="docs/images/主界面.png" alt="主界面" width="45%" />
   <img src="docs/images/设置界面.png" alt="设置界面" width="45%" />
+</div>
+
+### 效率工具
+
+<div align="center">
+  <img src="docs/images/效率工具设置.png" alt="效率工具设置" width="45%" />
+  <img src="docs/images/快捷搜索.png" alt="快捷搜索" width="45%" />
+  <img src="docs/images/快捷便签.png" alt="快捷便签" width="45%" />
+</div>
+
+### 场景工作流
+
+<div align="center">
+  <img src="docs/images/场景设置.png" alt="场景设置" width="45%" />
+  <img src="docs/images/场景设置-选择动作类型.png" alt="场景设置-选择动作类型" width="45%" />
+</div>
+
+### 维护工具
+
+<div align="center">
+  <img src="docs/images/程序维护.png" alt="程序维护" width="45%" />
 </div>
 
 ## ✨ 特性
@@ -47,6 +70,10 @@
 - 📝 **快捷便签** - 随时记录灵感和待办事项
 - 🧮 **计算器增强** - 在搜索框中直接计算表达式
 - 🎨 **个性化** - 自定义主题色、背景图片、窗口透明度
+
+### 维护工具
+- 🧹 **清理无效项** - 一键检测失效程序，批量删除无效图标
+- 🔄 **更新检测** - 智能检测程序更新，支持版本号和文件元数据混合检测
 
 ## 🎬 场景功能
 
@@ -133,6 +160,23 @@ npm run tauri build
 | 以管理员身份运行 | 提升权限启动 |
 | 结束进程 | 强制关闭程序 |
 
+### 维护工具
+
+点击侧边栏底部的"维护"按钮或在设置中打开维护面板：
+
+#### 清理无效项
+1. 点击"开始检测"扫描所有程序
+2. 查看失效程序列表（❌ 文件不存在，⚠️ 网络路径不可达）
+3. 点击"批量删除失效项"一键清理
+
+#### 更新检测
+1. 首次使用需点击"立即初始化"建立基准数据
+2. 点击"开始检测更新"扫描程序更新
+3. 查看更新列表：
+   - 🔵 **高可信度** - 注册表版本号变化
+   - 🟡 **中等可信度** - 文件大小和修改时间同时变化
+   - ⚪ **低可信度** - 仅修改时间变化
+
 ### ⚙️ 设置选项
 
 | 选项 | 可选值 |
@@ -187,11 +231,13 @@ program-manager/
 │   │   ├── ClipboardHistory.vue # 剪贴板历史
 │   │   ├── SpotlightSearch.vue  # 快捷搜索
 │   │   ├── QuickNotes.vue       # 快捷便签
+│   │   ├── MaintenancePanel.vue # 维护面板
 │   │   └── SettingsDialog.vue   # 设置对话框
 │   ├── stores/             # Pinia 状态管理
 │   │   ├── appStore.ts          # 应用状态
 │   │   ├── scenesStore.ts       # 场景状态
 │   │   ├── clipboardStore.ts    # 剪贴板状态
+│   │   ├── maintenanceStore.ts  # 维护状态
 │   │   └── actionsStore.ts      # 动作状态
 │   ├── types/              # TypeScript 类型定义
 │   └── views/              # 视图
@@ -200,6 +246,8 @@ program-manager/
 │       ├── commands/       # Tauri 命令
 │       ├── models/         # 数据模型
 │       └── utils/          # 工具函数
+│           ├── app_validator.rs # 程序验证
+│           └── update_checker.rs # 更新检测
 └── scripts/                # 构建脚本
 ```
 
@@ -216,6 +264,8 @@ program-manager/
 - [x] 快捷便签
 - [x] 自定义主题色
 - [x] 背景图片
+- [x] 清理无效项
+- [x] 更新检测
 - [ ] 使用统计
 - [ ] 全局热键
 - [ ] 导入/导出

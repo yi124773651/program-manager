@@ -70,6 +70,13 @@ fn main() {
             // 场景动作命令
             send_keys,
             wait_for_window,
+            // 程序维护命令
+            validate_all_apps,
+            init_update_baseline,
+            init_all_baselines,
+            check_app_update,
+            check_all_updates,
+            batch_delete_apps,
         ])
         .setup(|app| {
             // 处理启动时的命令行参数

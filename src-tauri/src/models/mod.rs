@@ -3,6 +3,28 @@ use std::collections::HashMap;
 use std::sync::Mutex;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UpdateMetadata {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "baselineVersion")]
+    pub baseline_version: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "baselineFileSize")]
+    pub baseline_file_size: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "baselineModifiedTime")]
+    pub baseline_modified_time: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "lastCheckedAt")]
+    pub last_checked_at: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "updateStatus")]
+    pub update_status: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "updateConfidence")]
+    pub update_confidence: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct App {
     pub id: String,
     pub name: String,
@@ -15,6 +37,17 @@ pub struct App {
     pub last_launched: Option<u64>,
     #[serde(rename = "createdAt")]
     pub created_at: u64,
+    // 更新检测元数据（新增）
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "updateMetadata")]
+    pub update_metadata: Option<UpdateMetadata>,
+    // 有效性状态（新增）
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "validationStatus")]
+    pub validation_status: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "lastValidatedAt")]
+    pub last_validated_at: Option<u64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

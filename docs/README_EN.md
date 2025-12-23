@@ -25,9 +25,32 @@ English | **[简体中文](../README.md)**
 
 ## 📸 Preview
 
+### Main Interface & Settings
+
 <div align="center">
   <img src="images/主界面.png" alt="Main Interface" width="45%" />
   <img src="images/设置界面.png" alt="Settings" width="45%" />
+</div>
+
+### Productivity Tools
+
+<div align="center">
+  <img src="images/效率工具设置.png" alt="Productivity Settings" width="45%" />
+  <img src="images/快捷搜索.png" alt="Quick Search" width="45%" />
+  <img src="images/快捷便签.png" alt="Quick Notes" width="45%" />
+</div>
+
+### Scene Workflow
+
+<div align="center">
+  <img src="images/场景设置.png" alt="Scene Settings" width="45%" />
+  <img src="images/场景设置-选择动作类型.png" alt="Scene Actions" width="45%" />
+</div>
+
+### Maintenance Tools
+
+<div align="center">
+  <img src="images/程序维护.png" alt="Program Maintenance" width="45%" />
 </div>
 
 ## ✨ Features
@@ -47,6 +70,10 @@ English | **[简体中文](../README.md)**
 - 📝 **Quick Notes** - Record ideas and to-dos anytime
 - 🧮 **Calculator** - Calculate expressions directly in search box
 - 🎨 **Personalization** - Custom theme color, background image, window opacity
+
+### Maintenance Tools
+- 🧹 **Clean Invalid Items** - One-click detection of invalid programs, batch delete invalid icons
+- 🔄 **Update Detection** - Smart update detection with version number and file metadata hybrid approach
 
 ## 🎬 Scene Feature
 
@@ -133,6 +160,23 @@ Right-click app card for quick actions:
 | Run as Admin | Launch with elevated privileges |
 | Kill Process | Force close program |
 
+### Maintenance Tools
+
+Click the "Maintenance" button at the bottom of the sidebar or open it from settings:
+
+#### Clean Invalid Items
+1. Click "Start Detection" to scan all programs
+2. View invalid program list (❌ File not found, ⚠️ Network path unreachable)
+3. Click "Batch Delete Invalid Items" for one-click cleanup
+
+#### Update Detection
+1. First use requires clicking "Initialize Now" to establish baseline data
+2. Click "Start Update Detection" to scan for program updates
+3. View update list with confidence levels:
+   - 🔵 **High Confidence** - Registry version number changed
+   - 🟡 **Medium Confidence** - Both file size and modification time changed
+   - ⚪ **Low Confidence** - Only modification time changed
+
 ### ⚙️ Settings
 
 | Option | Values |
@@ -187,11 +231,13 @@ program-manager/
 │   │   ├── ClipboardHistory.vue # Clipboard history
 │   │   ├── SpotlightSearch.vue  # Quick search
 │   │   ├── QuickNotes.vue       # Quick notes
+│   │   ├── MaintenancePanel.vue # Maintenance panel
 │   │   └── SettingsDialog.vue   # Settings dialog
 │   ├── stores/             # Pinia state management
 │   │   ├── appStore.ts          # App state
 │   │   ├── scenesStore.ts       # Scene state
 │   │   ├── clipboardStore.ts    # Clipboard state
+│   │   ├── maintenanceStore.ts  # Maintenance state
 │   │   └── actionsStore.ts      # Actions state
 │   ├── types/              # TypeScript type definitions
 │   └── views/              # Views
@@ -200,6 +246,8 @@ program-manager/
 │       ├── commands/       # Tauri commands
 │       ├── models/         # Data models
 │       └── utils/          # Utilities
+│           ├── app_validator.rs # App validation
+│           └── update_checker.rs # Update detection
 └── scripts/                # Build scripts
 ```
 
@@ -216,6 +264,8 @@ program-manager/
 - [x] Quick notes
 - [x] Custom theme color
 - [x] Background image
+- [x] Clean invalid items
+- [x] Update detection
 - [ ] Usage statistics
 - [ ] Global hotkeys
 - [ ] Import/Export

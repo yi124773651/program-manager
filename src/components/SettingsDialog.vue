@@ -279,6 +279,25 @@
           </div>
         </section>
 
+        <!-- 维护工具 -->
+        <section class="settings-section">
+          <div class="section-header">
+            <h3>维护工具</h3>
+            <p class="section-description">检测失效项和程序更新</p>
+          </div>
+          <div class="setting-item">
+            <div class="setting-info">
+              <div class="setting-label">程序维护</div>
+              <div class="setting-desc">批量检测程序有效性和更新</div>
+            </div>
+            <div class="setting-control">
+              <button class="btn-primary" @click="showMaintenance = true">
+                打开维护面板
+              </button>
+            </div>
+          </div>
+        </section>
+
         <!-- 关于 -->
         <section class="settings-section">
           <div class="section-header">
@@ -292,20 +311,27 @@
       </div>
     </div>
   </div>
+
+  <!-- 维护面板 -->
+  <MaintenancePanel v-if="showMaintenance" @close="showMaintenance = false" />
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { ref, computed } from 'vue'
 import { open } from '@tauri-apps/plugin-dialog'
 import { readFile } from '@tauri-apps/plugin-fs'
 import { XIcon, KeyboardIcon, ClipboardListIcon, SearchIcon, StickyNoteIcon, CalculatorIcon } from 'lucide-vue-next'
 import { useAppStore } from '@/stores/appStore'
 import { DEFAULT_THEME_COLORS } from '@/types'
+import MaintenancePanel from './MaintenancePanel.vue'
 
 defineEmits(['close'])
 
 const appStore = useAppStore()
 const settings = computed(() => appStore.settings)
+
+// 维护面板状态
+const showMaintenance = ref(false)
 
 // 预设主题色
 const themeColors = DEFAULT_THEME_COLORS

@@ -73,6 +73,10 @@ pub fn add_app(
         icon,
         last_launched: None,
         created_at: now,
+        // 维护功能新增字段
+        update_metadata: None,
+        validation_status: None,
+        last_validated_at: None,
     };
 
     config.apps.insert(app.id.clone(), app.clone());
@@ -485,4 +489,305 @@ pub fn execute_action_template(
     {
         Err("动作模板执行仅支持 Windows".to_string())
     }
+}
+
+// ============ 程序维护相关命令 ============
+
+/// 验证结果
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ValidationResult {
+    pub app_id: String,
+    pub app_name: String,
+    pub is_valid: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reason: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub path_type: Option<String>,
+}
+
+/// 更新检测详情
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UpdateCheckDetails {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub old_version: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub new_version: Option<String>,
+    pub file_changed: bool,
+    pub size_changed: bool,
+    pub modified_time_changed: bool,
+}
+
+/// 更新检测结果
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UpdateCheckResult {
+    pub app_id: String,
+    pub app_name: String,
+    pub has_update: bool,
+    pub confidence: String,
+    pub details: UpdateCheckDetails,
+}
+
+/// 批量操作结果
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BatchOperationResult {
+    pub total: usize,
+    pub completed: usize,
+    pub succeeded: usize,
+    pub failed: usize,
+    pub errors: Vec<ErrorInfo>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ErrorInfo {
+    pub app_id: String,
+    pub error: String,
+}
+
+/// 批量验证所有程序
+#[tauri::command]
+pub fn validate_all_apps(state: State<AppState>) -> Result<Vec<ValidationResult>, String> {
+    let config = state.config.lock().unwrap();
+    let mut results = Vec::new();
+
+    for (app_id, app) in &config.apps {
+        let (is_valid, reason, path_type) =
+            crate::utils::app_validator::validate_app_path(&app.path);
+
+        results.push(ValidationResult {
+            app_id: app_id.clone(),
+            app_name: app.name.clone(),
+            is_valid,
+            reason,
+            path_type,
+        });
+    }
+
+    Ok(results)
+}
+
+/// 为单个程序初始化基准数据
+#[tauri::command]
+pub fn init_update_baseline(app_id: String, state: State<AppState>) -> Result<(), String> {
+    use crate::models::UpdateMetadata;
+
+    let mut config = state.config.lock().unwrap();
+    let app = config
+        .apps
+        .get_mut(&app_id)
+        .ok_or_else(|| "应用不存在".to_string())?;
+
+    // 获取文件元数据
+    let (size, modified_time) = crate::utils::app_validator::get_file_metadata(&app.path)
+        .ok_or_else(|| "无法读取文件元数据".to_string())?;
+
+    // 尝试从注册表获取版本号（Windows only）
+    #[cfg(target_os = "windows")]
+    let version = crate::utils::update_checker::get_version_from_registry(&app.path);
+
+    #[cfg(not(target_os = "windows"))]
+    let version: Option<String> = None;
+
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_secs();
+
+    app.update_metadata = Some(UpdateMetadata {
+        baseline_version: version,
+        baseline_file_size: Some(size),
+        baseline_modified_time: Some(modified_time),
+        last_checked_at: Some(now),
+        update_status: Some("none".to_string()),
+        update_confidence: None,
+    });
+
+    crate::utils::config::save_config(&config).map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+/// 批量初始化所有程序的基准数据
+#[tauri::command]
+pub fn init_all_baselines(state: State<AppState>) -> Result<BatchOperationResult, String> {
+    use crate::models::UpdateMetadata;
+
+    let mut config = state.config.lock().unwrap();
+    let total = config.apps.len();
+    let mut completed = 0;
+    let mut succeeded = 0;
+    let mut errors = Vec::new();
+
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_secs();
+
+    for (app_id, app) in config.apps.iter_mut() {
+        completed += 1;
+
+        // 跳过已初始化的
+        if app.update_metadata.is_some() {
+            succeeded += 1;
+            continue;
+        }
+
+        // 初始化基准数据
+        if let Some((size, modified_time)) =
+            crate::utils::app_validator::get_file_metadata(&app.path)
+        {
+            #[cfg(target_os = "windows")]
+            let version = crate::utils::update_checker::get_version_from_registry(&app.path);
+
+            #[cfg(not(target_os = "windows"))]
+            let version: Option<String> = None;
+
+            app.update_metadata = Some(UpdateMetadata {
+                baseline_version: version,
+                baseline_file_size: Some(size),
+                baseline_modified_time: Some(modified_time),
+                last_checked_at: Some(now),
+                update_status: Some("none".to_string()),
+                update_confidence: None,
+            });
+            succeeded += 1;
+        } else {
+            errors.push(ErrorInfo {
+                app_id: app_id.clone(),
+                error: "无法读取文件元数据".to_string(),
+            });
+        }
+    }
+
+    crate::utils::config::save_config(&config).map_err(|e| e.to_string())?;
+
+    Ok(BatchOperationResult {
+        total,
+        completed,
+        succeeded,
+        failed: errors.len(),
+        errors,
+    })
+}
+
+/// 检测单个程序更新
+#[tauri::command]
+pub fn check_app_update(app_id: String, state: State<AppState>) -> Result<UpdateCheckResult, String> {
+    let config = state.config.lock().unwrap();
+    let app = config
+        .apps
+        .get(&app_id)
+        .ok_or_else(|| "应用不存在".to_string())?;
+
+    let metadata = app.update_metadata.as_ref();
+    let baseline_version = metadata.and_then(|m| m.baseline_version.clone());
+    let baseline_size = metadata.and_then(|m| m.baseline_file_size);
+    let baseline_modified_time = metadata.and_then(|m| m.baseline_modified_time);
+
+    let result = crate::utils::update_checker::check_for_update(
+        &app.path,
+        baseline_version,
+        baseline_size,
+        baseline_modified_time,
+    );
+
+    Ok(UpdateCheckResult {
+        app_id: app_id.clone(),
+        app_name: app.name.clone(),
+        has_update: result.has_update,
+        confidence: result.confidence,
+        details: UpdateCheckDetails {
+            old_version: result.old_version,
+            new_version: result.new_version,
+            file_changed: result.file_changed,
+            size_changed: result.size_changed,
+            modified_time_changed: result.modified_time_changed,
+        },
+    })
+}
+
+/// 批量检测所有程序更新
+#[tauri::command]
+pub fn check_all_updates(state: State<AppState>) -> Result<Vec<UpdateCheckResult>, String> {
+    let config = state.config.lock().unwrap();
+    let mut results = Vec::new();
+
+    for (app_id, app) in &config.apps {
+        let metadata = app.update_metadata.as_ref();
+        let baseline_version = metadata.and_then(|m| m.baseline_version.clone());
+        let baseline_size = metadata.and_then(|m| m.baseline_file_size);
+        let baseline_modified_time = metadata.and_then(|m| m.baseline_modified_time);
+
+        let result = crate::utils::update_checker::check_for_update(
+            &app.path,
+            baseline_version,
+            baseline_size,
+            baseline_modified_time,
+        );
+
+        results.push(UpdateCheckResult {
+            app_id: app_id.clone(),
+            app_name: app.name.clone(),
+            has_update: result.has_update,
+            confidence: result.confidence,
+            details: UpdateCheckDetails {
+                old_version: result.old_version,
+                new_version: result.new_version,
+                file_changed: result.file_changed,
+                size_changed: result.size_changed,
+                modified_time_changed: result.modified_time_changed,
+            },
+        });
+    }
+
+    Ok(results)
+}
+
+/// 批量删除程序
+#[tauri::command]
+pub fn batch_delete_apps(app_ids: Vec<String>, state: State<AppState>) -> Result<BatchOperationResult, String> {
+    let mut config = state.config.lock().unwrap();
+    let total = app_ids.len();
+    let mut completed = 0;
+    let mut succeeded = 0;
+    let mut errors = Vec::new();
+
+    for app_id in app_ids {
+        completed += 1;
+
+        if let Some(app) = config.apps.remove(&app_id) {
+            // 从分类中移除
+            for category in config.categories.values_mut() {
+                category.apps.retain(|id| id != &app_id);
+            }
+
+            // 删除图标文件
+            if let Some(ref icon_filename) = app.icon {
+                if !icon_filename.starts_with("data:") {
+                    let icon_path = crate::utils::config::get_icon_path(icon_filename);
+                    let _ = std::fs::remove_file(icon_path);
+                }
+            }
+
+            succeeded += 1;
+        } else {
+            errors.push(ErrorInfo {
+                app_id: app_id.clone(),
+                error: "应用不存在".to_string(),
+            });
+        }
+    }
+
+    crate::utils::config::save_config(&config).map_err(|e| e.to_string())?;
+
+    Ok(BatchOperationResult {
+        total,
+        completed,
+        succeeded,
+        failed: errors.len(),
+        errors,
+    })
 }

@@ -3,6 +3,7 @@ import { useAppStore } from './appStore'
 import { useClipboardStore } from './clipboardStore'
 import type { SearchResult, SearchResultType } from '@/types/search'
 import { DEFAULT_SEARCH_ENGINES } from '@/types/search'
+import type { Config } from '@/types'
 import { invoke } from '@tauri-apps/api/core'
 import { open } from '@tauri-apps/plugin-shell'
 import { writeText } from '@tauri-apps/plugin-clipboard-manager'
@@ -121,6 +122,17 @@ export const useSearchStore = defineStore('search', {
       this.selectedIndex = 0
       this.isLoading = true
       const appStore = useAppStore()
+
+      // 强制重新加载配置以获取最新设置（解决独立窗口配置不同步问题）
+      if (appStore.initialized) {
+        try {
+          const config = await invoke<Config>('load_config')
+          appStore.config = config
+        } catch (error) {
+          console.error('刷新配置失败:', error)
+        }
+      }
+
       const settings = appStore.settings
 
       try {

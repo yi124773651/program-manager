@@ -1,3 +1,13 @@
+// 更新检测元数据
+export interface UpdateMetadata {
+  baselineVersion?: string       // 注册表版本号
+  baselineFileSize?: number       // 文件大小（字节）
+  baselineModifiedTime?: number   // 修改时间戳
+  lastCheckedAt?: number          // 最后检测时间
+  updateStatus?: 'none' | 'suspected' | 'confirmed'
+  updateConfidence?: 'high' | 'medium' | 'low'
+}
+
 // 应用程序数据模型
 export interface App {
   id: string
@@ -7,6 +17,11 @@ export interface App {
   icon?: string  // base64 编码的图标
   lastLaunched?: number
   createdAt: number
+  // 更新检测元数据（新增）
+  updateMetadata?: UpdateMetadata
+  // 有效性状态（新增）
+  validationStatus?: 'valid' | 'invalid' | 'unreachable'
+  lastValidatedAt?: number
 }
 
 // 分类数据模型
@@ -342,4 +357,39 @@ export function getActionsByGroup(group: ActionGroup): ActionTemplate[] {
 // 获取动作模板
 export function getActionTemplate(id: string): ActionTemplate | undefined {
   return PRESET_ACTIONS.find(a => a.id === id)
+}
+
+// ============ 程序维护功能类型 ============
+
+// 批量操作结果
+export interface BatchOperationResult {
+  total: number
+  completed: number
+  succeeded: number
+  failed: number
+  errors: { appId: string; error: string }[]
+}
+
+// 验证结果
+export interface ValidationResult {
+  appId: string
+  appName: string
+  isValid: boolean
+  reason?: string
+  pathType?: 'local' | 'network' | 'removable'
+}
+
+// 更新检测结果
+export interface UpdateCheckResult {
+  appId: string
+  appName: string
+  hasUpdate: boolean
+  confidence: 'high' | 'medium' | 'low'
+  details: {
+    oldVersion?: string
+    newVersion?: string
+    fileChanged: boolean
+    sizeChanged: boolean
+    modifiedTimeChanged: boolean
+  }
 }

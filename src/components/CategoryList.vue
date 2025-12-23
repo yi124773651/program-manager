@@ -92,6 +92,10 @@
 
     <!-- 设置按钮 -->
     <div class="settings-footer">
+      <button class="maintenance-btn" @click="showMaintenance = true" title="程序维护">
+        <WrenchIcon :size="18" />
+        <span>维护</span>
+      </button>
       <button class="settings-btn" @click="showSettings = true" title="设置">
         <SettingsIcon :size="18" />
         <span>设置</span>
@@ -112,6 +116,9 @@
     <Teleport to="body">
       <Transition name="fade">
         <SettingsDialog v-if="showSettings" @close="showSettings = false" />
+      </Transition>
+      <Transition name="fade">
+        <MaintenancePanel v-if="showMaintenance" @close="showMaintenance = false" />
       </Transition>
     </Teleport>
 
@@ -170,11 +177,12 @@
 import { computed, ref, onMounted, onUnmounted, nextTick } from 'vue'
 import { useAppStore } from '@/stores/appStore'
 import { useScenesStore } from '@/stores/scenesStore'
-import { FolderIcon, PlusIcon, Edit2Icon, TrashIcon, SettingsIcon, ClipboardListIcon, ZapIcon, GithubIcon } from 'lucide-vue-next'
+import { FolderIcon, PlusIcon, Edit2Icon, TrashIcon, SettingsIcon, WrenchIcon, ClipboardListIcon, ZapIcon, GithubIcon } from 'lucide-vue-next'
 import type { Category, Scene } from '@/types'
 import { SCENE_ICONS } from '@/types'
 import Sortable from 'sortablejs'
 import SettingsDialog from './SettingsDialog.vue'
+import MaintenancePanel from './MaintenancePanel.vue'
 import ClipboardHistory from './ClipboardHistory.vue'
 import SceneEditor from './SceneEditor.vue'
 
@@ -186,6 +194,7 @@ const categoriesRef = ref<HTMLElement | null>(null)
 const sortableInstance = ref<any>(null)
 
 const showSettings = ref(false)
+const showMaintenance = ref(false)
 const activeTab = ref<'categories' | 'clipboard'>('categories')
 
 // 场景编辑器状态
@@ -895,6 +904,23 @@ onUnmounted(() => {
 }
 
 .settings-btn:hover {
+  background: var(--category-hover);
+  color: var(--text-primary);
+}
+
+.maintenance-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  transition: all 0.2s;
+}
+
+.maintenance-btn:hover {
   background: var(--category-hover);
   color: var(--text-primary);
 }

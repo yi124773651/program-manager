@@ -219,6 +219,11 @@ export const useAppStore = defineStore('app', {
         })
       }
 
+      // 初始化更新基准数据（后台静默执行，不阻塞用户操作）
+      invoke('init_update_baseline', { appId: app.id }).catch(err => {
+        console.warn(`初始化基准数据失败 (${app.name}):`, err)
+      })
+
       await this.saveConfig()
       return app
     },
