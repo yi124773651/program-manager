@@ -791,3 +791,57 @@ pub fn batch_delete_apps(app_ids: Vec<String>, state: State<AppState>) -> Result
         errors,
     })
 }
+
+/// 从 URL 获取图片并返回 base64 data URL
+#[tauri::command]
+pub async fn fetch_image_as_base64(url: String) -> Result<String, String> {
+    #[cfg(target_os = "windows")]
+    {
+        use std::os::windows::process::CommandExt;
+        use std::process::Command;
+
+        const CREATE_NO_WINDOW: u32 = 0x08000000;
+
+        let script = format!(
+            r#"
+$ProgressPreference = 'SilentlyContinue'
+try {{
+    $response = Invoke-WebRequest -Uri '{}' -UseBasicParsing -TimeoutSec 15 -MaximumRedirection 5
+    $contentType = $response.Headers['Content-Type']
+    if ($contentType -is [array]) {{ $contentType = $contentType[0] }}
+    if (-not $contentType) {{ $contentType = 'image/jpeg' }}
+    if ($contentType -notlike 'image/*') {{ $contentType = 'image/jpeg' }}
+    $base64 = [Convert]::ToBase64String($response.Content)
+    Write-Output "data:$contentType;base64,$base64"
+}} catch {{
+    Write-Error $_.Exception.Message
+    exit 1
+}}
+"#,
+            url.replace("'", "''")
+        );
+
+        let output = Command::new("powershell")
+            .args(&["-NoProfile", "-Command", &script])
+            .creation_flags(CREATE_NO_WINDOW)
+            .output()
+            .map_err(|e| format!("执行失败: {}", e))?;
+
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            return Err(format!("获取图片失败: {}", stderr.trim()));
+        }
+
+        let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
+        if stdout.starts_with("data:image/") {
+            Ok(stdout)
+        } else {
+            Err("返回数据不是有效的图片".to_string())
+        }
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    {
+        Err("此功能仅支持 Windows".to_string())
+    }
+}

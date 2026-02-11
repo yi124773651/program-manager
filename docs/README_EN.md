@@ -69,7 +69,7 @@ English | **[简体中文](../README.md)**
 - 🔍 **Quick Search** - Spotlight-style global search
 - 📝 **Quick Notes** - Record ideas and to-dos anytime
 - 🧮 **Calculator** - Calculate expressions directly in search box
-- 🎨 **Personalization** - Custom theme color, background image, window opacity
+- 🎨 **Personalization** - Custom theme color, background image (local / random image API), window opacity
 
 ### Maintenance Tools
 - 🧹 **Clean Invalid Items** - One-click detection of invalid programs, batch delete invalid icons
@@ -184,7 +184,7 @@ Click the "Maintenance" button at the bottom of the sidebar or open it from sett
 | Card Size | Small / Medium / Large |
 | Theme | Light / Dark / Auto |
 | Theme Color | 8 preset colors |
-| Background | Custom background image |
+| Background | Local image / Random image API |
 | Window Opacity | 0% - 100% |
 | Sort | Recent / Name / Custom |
 
@@ -263,7 +263,7 @@ program-manager/
 - [x] Quick search
 - [x] Quick notes
 - [x] Custom theme color
-- [x] Background image
+- [x] Background image (local & random image API)
 - [x] Clean invalid items
 - [x] Update detection
 - [ ] Usage statistics

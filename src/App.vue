@@ -115,6 +115,11 @@ onMounted(async () => {
 
   await appStore.init()
 
+  // 如果背景来源为随机图床，启动时加载一次
+  if (appStore.settings.backgroundSource === 'api' && appStore.settings.backgroundApiUrl) {
+    appStore.loadApiBackground()
+  }
+
   // 初始化便签
   notesStore.init()
 

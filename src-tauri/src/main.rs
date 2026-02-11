@@ -77,6 +77,8 @@ fn main() {
             check_app_update,
             check_all_updates,
             batch_delete_apps,
+            // 图床图片获取命令
+            fetch_image_as_base64,
         ])
         .setup(|app| {
             // 处理启动时的命令行参数

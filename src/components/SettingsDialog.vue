@@ -1,4 +1,5 @@
 <template>
+  <div class="settings-root">
   <div class="settings-overlay" @click.self="$emit('close')">
     <div class="settings-dialog">
       <div class="settings-header">
@@ -44,8 +45,34 @@
             </div>
           </div>
 
-          <!-- 背景图片 -->
+          <!-- 背景来源 -->
           <div class="setting-item">
+            <div class="setting-info">
+              <div class="setting-label">背景来源</div>
+              <div class="setting-desc">选择背景图片的来源方式</div>
+            </div>
+            <div class="setting-control">
+              <div class="source-toggle">
+                <button
+                  class="source-btn"
+                  :class="{ active: (settings.backgroundSource || 'local') === 'local' }"
+                  @click="updateBackgroundSource('local')"
+                >
+                  本地图片
+                </button>
+                <button
+                  class="source-btn"
+                  :class="{ active: settings.backgroundSource === 'api' }"
+                  @click="updateBackgroundSource('api')"
+                >
+                  随机图床
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- 本地图片设置 -->
+          <div v-if="(settings.backgroundSource || 'local') === 'local'" class="setting-item">
             <div class="setting-info">
               <div class="setting-label">背景图片</div>
               <div class="setting-desc">
@@ -65,6 +92,32 @@
                 @click="clearBackgroundImage"
               >
                 清除
+              </button>
+            </div>
+          </div>
+
+          <!-- 随机图床设置 -->
+          <div v-if="settings.backgroundSource === 'api'" class="setting-item">
+            <div class="setting-info">
+              <div class="setting-label">图床地址</div>
+              <div class="setting-desc">
+                输入随机图片 API 地址，每次启动自动刷新
+              </div>
+            </div>
+            <div class="setting-control api-bg-control">
+              <input
+                type="text"
+                class="api-url-input"
+                placeholder="https://picsum.photos/1920/1080"
+                :value="settings.backgroundApiUrl || ''"
+                @change="updateBackgroundApiUrl(($event.target as HTMLInputElement).value)"
+              />
+              <button
+                class="btn-secondary"
+                :disabled="apiBackgroundLoading || !settings.backgroundApiUrl"
+                @click="refreshApiBackground"
+              >
+                {{ apiBackgroundLoading ? '加载中...' : '刷新预览' }}
               </button>
             </div>
           </div>
@@ -312,8 +365,9 @@
     </div>
   </div>
 
-  <!-- 维护面板 -->
-  <MaintenancePanel v-if="showMaintenance" @close="showMaintenance = false" />
+    <!-- 维护面板 -->
+    <MaintenancePanel v-if="showMaintenance" @close="showMaintenance = false" />
+  </div>
 </template>
 
 <script setup lang="ts">
@@ -332,6 +386,9 @@ const settings = computed(() => appStore.settings)
 
 // 维护面板状态
 const showMaintenance = ref(false)
+
+// 图床加载状态
+const apiBackgroundLoading = ref(false)
 
 // 预设主题色
 const themeColors = DEFAULT_THEME_COLORS
@@ -376,6 +433,33 @@ const selectBackgroundImage = async () => {
 // 清除背景图片
 const clearBackgroundImage = async () => {
   await appStore.updateSettings({ backgroundImage: undefined })
+}
+
+// 切换背景来源
+const updateBackgroundSource = async (source: 'local' | 'api') => {
+  await appStore.updateSettings({ backgroundSource: source })
+  if (source === 'api' && settings.value.backgroundApiUrl) {
+    await refreshApiBackground()
+  } else if (source === 'local') {
+    // 切换到本地模式时，如果没有本地图片，清空背景
+    // backgroundImage 保留上次的值即可
+  }
+}
+
+// 更新图床 URL
+const updateBackgroundApiUrl = async (url: string) => {
+  await appStore.updateSettings({ backgroundApiUrl: url.trim() || undefined })
+}
+
+// 刷新图床背景
+const refreshApiBackground = async () => {
+  if (apiBackgroundLoading.value) return
+  apiBackgroundLoading.value = true
+  try {
+    await appStore.loadApiBackground()
+  } finally {
+    apiBackgroundLoading.value = false
+  }
 }
 
 // 更新背景透明度
@@ -872,5 +956,66 @@ button:disabled {
 
 .feature-toggle .toggle-switch input:checked + .toggle-slider:before {
   background-color: var(--primary-color);
+}
+
+/* 背景来源切换 */
+.source-toggle {
+  display: flex;
+  border-radius: 6px;
+  overflow: hidden;
+  border: 1px solid var(--border-color);
+}
+
+.source-btn {
+  padding: 6px 16px;
+  font-size: 13px;
+  font-weight: 500;
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+  transition: all 0.2s;
+  border: none;
+  cursor: pointer;
+}
+
+.source-btn:first-child {
+  border-right: 1px solid var(--border-color);
+}
+
+.source-btn.active {
+  background: var(--primary-color);
+  color: white;
+}
+
+.source-btn:not(.active):hover {
+  background: var(--border-color);
+}
+
+/* 图床 URL 输入 */
+.api-bg-control {
+  flex-direction: column;
+  align-items: stretch;
+  min-width: 300px;
+}
+
+.api-url-input {
+  width: 100%;
+  padding: 8px 12px;
+  border-radius: 6px;
+  border: 1px solid var(--border-color);
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font-size: 13px;
+  outline: none;
+  transition: border-color 0.2s;
+  box-sizing: border-box;
+}
+
+.api-url-input:focus {
+  border-color: var(--primary-color);
+}
+
+.api-url-input::placeholder {
+  color: var(--text-secondary);
+  opacity: 0.6;
 }
 </style>

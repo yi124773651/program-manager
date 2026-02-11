@@ -334,6 +334,22 @@ export const useAppStore = defineStore('app', {
       return Object.values(this.config.apps).some(
         app => app.path.toLowerCase() === normalizedPath
       )
+    },
+
+    // 从随机图床加载背景图片
+    async loadApiBackground(): Promise<boolean> {
+      const url = this.config.settings.backgroundApiUrl
+      if (!url) return false
+
+      try {
+        const dataUrl = await invoke<string>('fetch_image_as_base64', { url })
+        this.config.settings.backgroundImage = dataUrl
+        this.debouncedSaveConfig()
+        return true
+      } catch (error) {
+        console.error('加载图床背景图片失败:', error)
+        return false
+      }
     }
   }
 })
