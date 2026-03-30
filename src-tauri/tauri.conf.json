@@ -22,9 +22,9 @@
         "displayLanguageSelector": false,
         "installerIcon": "icons/icon.ico"
       }
-    },
-    "fileName": "program-manager"
+    }
   },
+  "mainBinaryName": "program-manager",
   "app": {
     "windows": [
       {
