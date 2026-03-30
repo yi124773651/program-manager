@@ -869,6 +869,7 @@ pub async fn check_app_version_update() -> Result<AppUpdateInfo, String> {
         let current_version = env!("CARGO_PKG_VERSION").to_string();
 
         let script = r#"
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $ProgressPreference = 'SilentlyContinue'
 try {
     $response = Invoke-RestMethod -Uri 'https://api.github.com/repos/yi124773651/program-manager/releases/latest' -TimeoutSec 10

@@ -19,9 +19,11 @@
       "nsis": {
         "installMode": "currentUser",
         "languages": ["SimpChinese"],
-        "displayLanguageSelector": false
+        "displayLanguageSelector": false,
+        "installerIcon": "icons/icon.ico"
       }
-    }
+    },
+    "fileName": "program-manager"
   },
   "app": {
     "windows": [
