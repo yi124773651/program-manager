@@ -1,7 +1,7 @@
 use crate::models::{App, AppState, Category, Config};
 use serde::Serialize;
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
-use tauri::State;
+use tauri::{Manager, State};
 
 /// 动作执行结果
 #[derive(Serialize)]
@@ -844,4 +844,13 @@ try {{
     {
         Err("此功能仅支持 Windows".to_string())
     }
+}
+
+#[tauri::command]
+pub fn hide_todo_window(app: tauri::AppHandle) -> Result<(), String> {
+    let window = app
+        .get_webview_window("todo")
+        .ok_or_else(|| "待办窗口不存在".to_string())?;
+
+    window.hide().map_err(|e| format!("隐藏待办窗口失败: {}", e))
 }

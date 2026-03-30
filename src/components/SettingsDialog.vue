@@ -284,6 +284,30 @@
             </div>
           </div>
 
+          <!-- 待办日程表 -->
+          <div class="setting-item" :class="{ disabled: settings.quickerEnabled === false }">
+            <div class="setting-info">
+              <div class="setting-label">
+                <CalendarDaysIcon :size="16" class="feature-icon" />
+                待办日程表
+              </div>
+              <div class="setting-desc">
+                按下 <kbd>Alt+T</kbd> 打开或隐藏独立待办窗口，支持开始/结束时间、任务说明和一键清理今天之前记录
+              </div>
+            </div>
+            <div class="setting-control">
+              <label class="toggle-switch">
+                <input
+                  type="checkbox"
+                  :checked="settings.todoScheduleEnabled !== false"
+                  :disabled="settings.quickerEnabled === false"
+                  @change="toggleTodoSchedule"
+                />
+                <span class="toggle-slider"></span>
+              </label>
+            </div>
+          </div>
+
           <!-- 计算器增强 -->
           <div class="setting-item" :class="{ disabled: settings.quickerEnabled === false }">
             <div class="setting-info">
@@ -323,6 +347,10 @@
               <div class="tip-row">
                 <kbd>Alt+N</kbd>
                 <span>打开快捷便签</span>
+              </div>
+              <div class="tip-row">
+                <kbd>Alt+T</kbd>
+                <span>打开或隐藏待办日程表窗口</span>
               </div>
               <div class="tip-row">
                 <kbd>=表达式</kbd>
@@ -374,7 +402,7 @@
 import { ref, computed } from 'vue'
 import { open } from '@tauri-apps/plugin-dialog'
 import { readFile } from '@tauri-apps/plugin-fs'
-import { XIcon, KeyboardIcon, ClipboardListIcon, SearchIcon, StickyNoteIcon, CalculatorIcon } from 'lucide-vue-next'
+import { XIcon, KeyboardIcon, ClipboardListIcon, SearchIcon, StickyNoteIcon, CalculatorIcon, CalendarDaysIcon } from 'lucide-vue-next'
 import { useAppStore } from '@/stores/appStore'
 import { DEFAULT_THEME_COLORS } from '@/types'
 import MaintenancePanel from './MaintenancePanel.vue'
@@ -496,6 +524,11 @@ const toggleSpotlightSearch = async (event: Event) => {
 const toggleQuickNotes = async (event: Event) => {
   const checked = (event.target as HTMLInputElement).checked
   await appStore.updateSettings({ quickNotesEnabled: checked })
+}
+
+const toggleTodoSchedule = async (event: Event) => {
+  const checked = (event.target as HTMLInputElement).checked
+  await appStore.updateSettings({ todoScheduleEnabled: checked })
 }
 
 const toggleCalculator = async (event: Event) => {

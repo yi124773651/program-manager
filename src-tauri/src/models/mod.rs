@@ -114,6 +114,9 @@ pub struct AppSettings {
     #[serde(rename = "calculatorEnabled")]
     pub calculator_enabled: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "todoScheduleEnabled")]
+    pub todo_schedule_enabled: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     #[serde(rename = "backgroundSource")]
     pub background_source: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -143,6 +146,7 @@ impl Default for AppSettings {
             quick_notes_enabled: Some(true),
             quick_notes_shortcut: Some("Alt+N".to_string()),
             calculator_enabled: Some(true),
+            todo_schedule_enabled: Some(true),
             background_source: Some("local".to_string()),
             background_api_url: None,
         }
