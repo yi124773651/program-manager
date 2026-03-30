@@ -91,8 +91,9 @@ import { useAppStore } from '@/stores/appStore'
 import { SearchIcon, PlusIcon, GridIcon, FolderIcon } from 'lucide-vue-next'
 import CategoryList from '@/components/CategoryList.vue'
 import AppCard from '@/components/AppCard.vue'
-import { open, message } from '@tauri-apps/plugin-dialog'
+import { open as openFileDialog, message, ask } from '@tauri-apps/plugin-dialog'
 import { invoke } from '@tauri-apps/api/core'
+import { open as openUrl } from '@tauri-apps/plugin-shell'
 import { type UnlistenFn } from '@tauri-apps/api/event'
 import { getCurrentWindow } from '@tauri-apps/api/window'
 import Sortable from 'sortablejs'
@@ -355,9 +356,36 @@ watch(() => appStore.currentCategory, async () => {
 onMounted(async () => {
   await nextTick()
   initSortable()
-  // 初始化 Tauri 文件拖拽事件
   initTauriDragDrop()
+  checkForUpdate()
 })
+
+const checkForUpdate = async () => {
+  try {
+    const info = await invoke<{
+      hasUpdate: boolean
+      currentVersion: string
+      latestVersion: string
+      releaseUrl: string
+      releaseNotes: string
+      downloadUrl: string
+    }>('check_app_version_update')
+
+    if (!info.hasUpdate) return
+
+    const confirmed = await ask(
+      `发现新版本 v${info.latestVersion}（当前 v${info.currentVersion}）\n\n${info.releaseNotes || ''}`.trim(),
+      { title: '发现新版本', kind: 'info', okLabel: '前往下载', cancelLabel: '稍后再说' }
+    )
+
+    if (confirmed) {
+      const url = info.downloadUrl || info.releaseUrl
+      if (url) await openUrl(url)
+    }
+  } catch {
+    // 静默失败，不影响正常使用
+  }
+}
 
 onUnmounted(() => {
   // 注意：不清理全局拖拽监听器，因为它是全局的，组件销毁后仍需保持
@@ -375,7 +403,7 @@ const handleAddApp = async () => {
   }
 
   try {
-    const file = await open({
+    const file = await openFileDialog({
       multiple: true,
       filters: [{
         name: '可执行文件',

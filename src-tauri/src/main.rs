@@ -80,6 +80,7 @@ fn main() {
             // 图床图片获取命令
             fetch_image_as_base64,
             hide_todo_window,
+            check_app_version_update,
         ])
         .setup(|app| {
             // 处理启动时的命令行参数

@@ -1,0 +1,52 @@
+name: Release
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  release:
+    runs-on: windows-latest
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Type check frontend
+        run: npx vue-tsc --noEmit
+
+      - name: Get version
+        id: version
+        shell: bash
+        run: |
+          VERSION=$(grep -o '"version": "[^"]*"' src-tauri/tauri.conf.json | head -1 | cut -d'"' -f4)
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Build Tauri app
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tagName: v${{ steps.version.outputs.version }}
+          releaseName: v${{ steps.version.outputs.version }}
+          releaseBody: '程序管理器 v${{ steps.version.outputs.version }}'
+          releaseDraft: false
+          prerelease: false
