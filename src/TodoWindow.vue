@@ -165,6 +165,21 @@ import TodoItemRow from '@/components/TodoItemRow.vue'
 
 const weekdays = ['日', '一', '二', '三', '四', '五', '六']
 
+const todayKey = ref(getTodayDateKey())
+let midnightTimer: ReturnType<typeof setTimeout> | null = null
+
+const scheduleMidnightRefresh = () => {
+  if (midnightTimer) clearTimeout(midnightTimer)
+  const now = new Date()
+  const tomorrow = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1)
+  const ms = tomorrow.getTime() - now.getTime() + 500
+  midnightTimer = setTimeout(() => {
+    todayKey.value = getTodayDateKey()
+    scheduleMidnightRefresh()
+  }, ms)
+}
+scheduleMidnightRefresh()
+
 const todoStore = useTodoStore()
 const { items, selectedDate, overdueTodos, selectedDateTodos, completedTodos } = storeToRefs(todoStore)
 const showCompleted = ref(false)
@@ -201,6 +216,7 @@ const monthLabel = computed(() => new Date(`${selectedDate.value}T00:00:00`).toL
 }))
 
 const quickDays = computed(() => {
+  void todayKey.value
   const base = new Date()
   return [0, 1, 2].map((offset) => {
     const date = new Date(base)
@@ -233,8 +249,7 @@ const calendarDays = computed(() => {
 })
 
 const hasPastRecords = computed(() => {
-  const today = getTodayDateKey()
-  return items.value.some((item) => item.date < today)
+  return items.value.some((item) => item.date < todayKey.value)
 })
 
 const formMessage = computed(() => formError.value || historyMessage.value)
@@ -298,7 +313,7 @@ const clearBeforeTodayRecords = async () => {
   clearingHistory.value = true
 
   try {
-    const confirmed = await ask('确定清除今天之前的待办记录吗？此操作不可撤销。', {
+    const confirmed = await ask('确定清除今天之前已完成的待办记录吗？未完成的待办将保留。此操作不可撤销。', {
       title: '清理历史记录',
       kind: 'warning'
     })
@@ -363,6 +378,7 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   document.removeEventListener('keydown', handleKeydown)
+  if (midnightTimer) clearTimeout(midnightTimer)
 })
 </script>
 

@@ -2,7 +2,7 @@
   "$schema": "https://tauri.app/schemas/2.0/capability.json",
   "identifier": "default",
   "description": "Default permissions for the application",
-  "windows": ["main", "scripts", "search", "notes"],
+  "windows": ["main", "scripts", "search", "notes", "todo"],
   "permissions": [
     "core:default",
     "core:window:default",
@@ -21,6 +21,7 @@
     "dialog:allow-open",
     "dialog:allow-save",
     "dialog:allow-message",
+    "dialog:allow-ask",
     "fs:default",
     "fs:allow-read-file",
     "fs:allow-write-file",

@@ -130,7 +130,7 @@ export const useTodoStore = defineStore('todoSchedule', {
     clearBeforeToday() {
       const today = getTodayDateKey()
       const beforeCount = this.items.length
-      this.items = this.items.filter((item) => item.date >= today)
+      this.items = this.items.filter((item) => item.date >= today || !item.completed)
       const clearedCount = beforeCount - this.items.length
 
       if (clearedCount > 0) {
