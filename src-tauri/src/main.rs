@@ -79,6 +79,7 @@ fn main() {
             batch_delete_apps,
             // 图床图片获取命令
             fetch_image_as_base64,
+            hide_todo_window,
         ])
         .setup(|app| {
             // 处理启动时的命令行参数
@@ -272,6 +273,53 @@ fn main() {
                             .inner_size(700.0, 500.0)
                             .resizable(true)
                             .min_inner_size(500.0, 400.0)
+                            .decorations(false)
+                            .transparent(true)
+                            .always_on_top(true)
+                            .center()
+                            .build();
+                    }
+                }
+            })?;
+
+            // 注册全局快捷键 Alt+T 打开待办日程表
+            let todo_shortcut = "Alt+T".parse::<Shortcut>().unwrap();
+            let app_handle_todo = app.handle().clone();
+            app.global_shortcut().on_shortcut(todo_shortcut, move |app, _shortcut, event| {
+                if event.state == ShortcutState::Pressed {
+                    let config = app_handle_todo.state::<AppState>();
+                    let config_guard = config.config.lock().unwrap();
+                    let quicker_enabled = config_guard.settings.quicker_enabled.unwrap_or(true);
+                    let todo_enabled = config_guard.settings.todo_schedule_enabled.unwrap_or(true);
+                    drop(config_guard);
+
+                    if !quicker_enabled || !todo_enabled {
+                        return;
+                    }
+
+                    if let Some(window) = app.get_webview_window("todo") {
+                        let is_visible = window.is_visible().unwrap_or(false);
+                        let is_minimized = window.is_minimized().unwrap_or(false);
+
+                        if is_visible && !is_minimized {
+                            let _ = window.hide();
+                        } else {
+                            let _ = window.show();
+                            let _ = window.unminimize();
+                            let _ = window.set_focus();
+                        }
+                    } else {
+                        let url = if cfg!(debug_assertions) {
+                            WebviewUrl::External("http://localhost:1420/todo.html".parse().unwrap())
+                        } else {
+                            WebviewUrl::App("todo.html".into())
+                        };
+
+                        let _ = WebviewWindowBuilder::new(app, "todo", url)
+                            .title("待办日程表")
+                            .inner_size(820.0, 620.0)
+                            .min_inner_size(680.0, 520.0)
+                            .resizable(true)
                             .decorations(false)
                             .transparent(true)
                             .always_on_top(true)

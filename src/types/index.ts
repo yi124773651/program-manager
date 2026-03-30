@@ -1,3 +1,5 @@
+export * from './todo'
+
 // 更新检测元数据
 export interface UpdateMetadata {
   baselineVersion?: string       // 注册表版本号
@@ -68,6 +70,8 @@ export interface AppSettings {
   quickNotesShortcut?: string  // 快捷便签快捷键（默认 Alt+N）
   // 计算器增强
   calculatorEnabled?: boolean  // 计算器增强开关（在搜索框中使用）
+  // 待办日程表
+  todoScheduleEnabled?: boolean  // 待办日程表开关
 }
 
 // 完整配置
@@ -122,7 +126,9 @@ export const DEFAULT_CONFIG: Config = {
     quickNotesEnabled: true,
     quickNotesShortcut: 'Alt+N',
     // 计算器增强默认设置
-    calculatorEnabled: true
+    calculatorEnabled: true,
+    // 待办日程表默认设置
+    todoScheduleEnabled: true
   }
 }
 

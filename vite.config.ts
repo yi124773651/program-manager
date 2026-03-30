@@ -22,7 +22,8 @@ export default defineConfig({
       input: {
         main: resolve(__dirname, 'index.html'),
         search: resolve(__dirname, 'search.html'),
-        notes: resolve(__dirname, 'notes.html')
+        notes: resolve(__dirname, 'notes.html'),
+        todo: resolve(__dirname, 'todo.html')
       }
     }
   }
