@@ -174,9 +174,9 @@ export const useMaintenanceStore = defineStore('maintenance', {
           appIds: invalidAppIds
         })
 
-        // 重新加载配置
+        // 重新加载配置（强制刷新前端状态）
         const appStore = useAppStore()
-        await appStore.init()
+        await appStore.reloadConfig()
 
         // 清理验证结果
         this.validationResults = this.validationResults.filter(
