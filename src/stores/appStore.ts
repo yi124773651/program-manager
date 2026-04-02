@@ -90,6 +90,15 @@ export const useAppStore = defineStore('app', {
   actions: {
     async init() {
       if (this.initialized) return
+      await this.loadConfig()
+    },
+
+    // 重新加载配置（强制从后端读取最新数据）
+    async reloadConfig() {
+      await this.loadConfig()
+    },
+
+    async loadConfig() {
       this.loading = true
       try {
         const config = await invoke<Config>('load_config')
@@ -104,7 +113,8 @@ export const useAppStore = defineStore('app', {
         this.currentCategory = config.settings.lastCategory || this.categories[0]?.id || null
         this.initialized = true
 
-        // 预加载图标 URL 缓存
+        // 重建图标 URL 缓存
+        this.iconUrlCache = {}
         this.preloadIconUrls()
       } catch (error) {
         console.error('加载配置失败:', error)
