@@ -40,6 +40,10 @@ import MainView from './views/MainView.vue'
 import SpotlightSearch from './components/SpotlightSearch.vue'
 import QuickNotes from './components/QuickNotes.vue'
 import { listen } from '@tauri-apps/api/event'
+import {
+  detectItemTypeFromPath,
+  getItemDisplayNameFromPath
+} from '@/types'
 
 const appStore = useAppStore()
 const searchStore = useSearchStore()
@@ -142,8 +146,8 @@ onMounted(async () => {
       const lowerPath = filePath.toLowerCase()
 
       // 检查是否是支持的文件类型
-      if (!lowerPath.endsWith('.exe') && !lowerPath.endsWith('.lnk')) {
-        alert('只能添加 .exe 或 .lnk 文件')
+      if (!detectItemTypeFromPath(filePath) && !lowerPath.endsWith('.lnk')) {
+        alert('只能添加受支持的文件类型')
         return
       }
 
@@ -155,7 +159,7 @@ onMounted(async () => {
         const categories = appStore.categories
         if (categories.length === 0) {
           // 创建一个默认分类
-          const defaultCategory = await appStore.addCategory('我的应用')
+          const defaultCategory = await appStore.addCategory('我的项目')
           targetCategoryId = defaultCategory.id
           await appStore.selectCategory(targetCategoryId)
         } else {
@@ -166,48 +170,52 @@ onMounted(async () => {
       }
 
       // 获取实际执行路径和应用名
-      let execPath = filePath
-      let appName = ''
+      let actualPath = filePath
+      let itemType = detectItemTypeFromPath(filePath)
+      let itemName = getItemDisplayNameFromPath(filePath, itemType)
 
       if (lowerPath.endsWith('.lnk')) {
         // 解析快捷方式
         try {
-          execPath = await invoke<string>('resolve_shortcut', { lnkPath: filePath })
-          const lnkName = filePath.split('\\').pop() || filePath.split('/').pop() || ''
-          appName = lnkName.replace(/\.lnk$/i, '')
+          actualPath = await invoke<string>('resolve_shortcut', { lnkPath: filePath })
+          itemType = detectItemTypeFromPath(actualPath) ?? 'app'
+          itemName = getItemDisplayNameFromPath(filePath, 'app')
         } catch (error) {
           console.error('解析快捷方式失败:', error)
           alert(`解析快捷方式失败: ${error}`)
           return
         }
-      } else {
-        const fileName = filePath.split('\\').pop() || filePath.split('/').pop() || '未知应用'
-        appName = fileName.replace(/\.exe$/i, '')
       }
 
-      // 检查是否已存在
-      if (appStore.isAppExists(execPath)) {
-        alert(`应用已存在：${appName}`)
+      if (!itemType) {
+        alert('暂不支持该文件类型')
         return
       }
 
-      // 添加应用
+      // 检查是否已存在
+      if (appStore.isAppExists(actualPath)) {
+        alert(`项目已存在：${itemName}`)
+        return
+      }
+
+      // 添加项目
       await appStore.addApp({
-        name: appName,
-        path: execPath,
-        category: targetCategoryId
+        name: itemName,
+        path: actualPath,
+        category: targetCategoryId,
+        itemType
       })
 
-      console.log('应用添加成功:', appName)
+      console.log('项目添加成功:', itemName)
 
       // 显示成功提示
       setTimeout(() => {
-        alert(`已成功添加应用：${appName}`)
+        alert(`已成功添加项目：${itemName}`)
       }, 100)
 
     } catch (error) {
-      console.error('添加应用失败:', error)
-      alert(`添加应用失败: ${error}`)
+      console.error('添加项目失败:', error)
+      alert(`添加项目失败: ${error}`)
     }
   })
 })

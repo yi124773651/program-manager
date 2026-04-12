@@ -2,6 +2,7 @@ import { defineStore } from 'pinia'
 import { invoke } from '@tauri-apps/api/core'
 import { useAppStore } from './appStore'
 import type { Scene, SceneAction } from '@/types'
+import { canUseProcessActions } from '@/types'
 
 const STORAGE_KEY = 'app_scenes_config'
 
@@ -96,6 +97,7 @@ export const useScenesStore = defineStore('scenes', {
       const appStore = useAppStore()
       const app = appStore.config.apps[appId]
       if (!app) return null
+      if (!canUseProcessActions(app.itemType)) return null
       // 从路径提取进程名（不含.exe）
       const fileName = app.path.split('\\').pop() || app.path.split('/').pop() || ''
       return fileName.replace(/\.exe$/i, '')

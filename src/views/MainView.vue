@@ -12,7 +12,7 @@
       <div v-if="isDragging" class="drop-overlay">
         <div class="drop-hint">
           <FolderIcon :size="64" />
-          <p>拖放 .exe 或 .lnk 文件到此处添加</p>
+          <p>拖放受支持的文件到此处添加</p>
         </div>
       </div>
 
@@ -21,7 +21,7 @@
         <div class="toolbar-left">
           <h1>{{ currentCategoryName || '程序管理器' }}</h1>
           <span v-if="currentApps.length > 0" class="app-count">
-            {{ currentApps.length }} 个应用
+            {{ currentItemCountLabel }}
           </span>
         </div>
 
@@ -32,15 +32,19 @@
             <input
               v-model="searchQuery"
               type="text"
-              placeholder="搜索应用..."
+              placeholder="搜索项目..."
               @input="handleSearch"
             />
           </div>
 
           <!-- 添加按钮 -->
-          <button class="btn-primary" @click="handleAddApp">
+          <button class="btn-secondary" @click="handleAddFiles">
             <PlusIcon :size="16" />
-            <span>添加应用</span>
+            <span>添加项目</span>
+          </button>
+          <button class="btn-secondary" @click="handleAddFolder">
+            <FolderPlusIcon :size="16" />
+            <span>添加文件夹</span>
           </button>
 
           <!-- 视图切换 -->
@@ -72,11 +76,15 @@
         <!-- 空状态 -->
         <div v-if="currentApps.length === 0" class="empty-state">
           <FolderIcon :size="64" />
-          <p>{{ searchQuery ? '没有找到匹配的应用' : '暂无应用' }}</p>
-          <p v-if="!searchQuery" class="empty-hint">拖放 .exe 或 .lnk 文件到此处，或点击下方按钮</p>
-          <button v-if="!searchQuery" class="btn-secondary" @click="handleAddApp">
+          <p>{{ searchQuery ? '没有找到匹配的项目' : '暂无项目' }}</p>
+          <p v-if="!searchQuery" class="empty-hint">拖放受支持文件到此处，或使用下方按钮添加文件与文件夹</p>
+          <button v-if="!searchQuery" class="btn-secondary" @click="handleAddFiles">
             <PlusIcon :size="16" />
-            添加第一个应用
+            添加文件
+          </button>
+          <button v-if="!searchQuery" class="btn-secondary" @click="handleAddFolder">
+            <FolderPlusIcon :size="16" />
+            添加文件夹
           </button>
         </div>
       </div>
@@ -88,14 +96,21 @@
 import { computed, ref, onMounted, onUnmounted, nextTick, watch } from 'vue'
 import { useDebounceFn } from '@vueuse/core'
 import { useAppStore } from '@/stores/appStore'
-import { SearchIcon, PlusIcon, GridIcon, FolderIcon } from 'lucide-vue-next'
+import { SearchIcon, PlusIcon, GridIcon, FolderIcon, FolderPlusIcon } from 'lucide-vue-next'
 import CategoryList from '@/components/CategoryList.vue'
 import AppCard from '@/components/AppCard.vue'
-import { open, message } from '@tauri-apps/plugin-dialog'
+import { open as openFileDialog, message, ask } from '@tauri-apps/plugin-dialog'
 import { invoke } from '@tauri-apps/api/core'
+import { open as openUrl } from '@tauri-apps/plugin-shell'
+import { stat } from '@tauri-apps/plugin-fs'
 import { type UnlistenFn } from '@tauri-apps/api/event'
 import { getCurrentWindow } from '@tauri-apps/api/window'
 import Sortable from 'sortablejs'
+import {
+  SUPPORTED_IMPORT_EXTENSIONS,
+  detectItemTypeForImport,
+  getItemDisplayNameFromPath
+} from '@/types'
 
 // 全局状态：仅保留事件监听器引用，防止 HMR 重复注册
 declare global {
@@ -118,6 +133,7 @@ const currentCategoryName = computed(() => {
   if (!appStore.currentCategory) return null
   return appStore.config.categories[appStore.currentCategory]?.name
 })
+const currentItemCountLabel = computed(() => `${currentApps.value.length} 个项目`)
 
 const handleSearch = () => {
   debouncedSetSearchQuery()
@@ -132,6 +148,24 @@ const setCardSize = (size: 'small' | 'medium' | 'large') => {
   appStore.updateSettings({ cardSize: size })
 }
 
+const ensureTargetCategory = async () => {
+  let targetCategoryId = appStore.currentCategory
+
+  if (!targetCategoryId) {
+    const categories = appStore.categories
+    if (categories.length === 0) {
+      const defaultCategory = await appStore.addCategory('我的项目')
+      targetCategoryId = defaultCategory.id
+      await appStore.selectCategory(targetCategoryId)
+    } else {
+      targetCategoryId = categories[0].id
+      await appStore.selectCategory(targetCategoryId)
+    }
+  }
+
+  return targetCategoryId!
+}
+
 // 处理 Tauri 文件拖拽（核心逻辑）
 const processDroppedFiles = async (paths: string[]) => {
   if (!paths || paths.length === 0) {
@@ -142,19 +176,7 @@ const processDroppedFiles = async (paths: string[]) => {
   console.log('处理拖拽文件:', paths)
 
   try {
-    // 确保有分类
-    let targetCategoryId = appStore.currentCategory
-    if (!targetCategoryId) {
-      const categories = appStore.categories
-      if (categories.length === 0) {
-        const defaultCategory = await appStore.addCategory('我的应用')
-        targetCategoryId = defaultCategory.id
-        await appStore.selectCategory(targetCategoryId)
-      } else {
-        targetCategoryId = categories[0].id
-        await appStore.selectCategory(targetCategoryId)
-      }
-    }
+    const targetCategoryId = await ensureTargetCategory()
 
     // 处理所有拖入的文件
     const results: { success: string[]; skipped: string[]; failed: string[] } = {
@@ -167,7 +189,7 @@ const processDroppedFiles = async (paths: string[]) => {
       if (!filePath) continue
 
       try {
-        await processFile(filePath, targetCategoryId!, results)
+        await processPath(filePath, targetCategoryId, results)
       } catch (error) {
         console.error('处理文件失败:', filePath, error)
         const fileName = filePath.split('\\').pop() || filePath.split('/').pop() || filePath
@@ -223,52 +245,55 @@ const initTauriDragDrop = async () => {
   }
 }
 
-// 处理单个文件
-const processFile = async (
+// 处理单个导入路径
+const processPath = async (
   filePath: string,
   categoryId: string,
-  results: { success: string[]; skipped: string[]; failed: string[] }
+  results: { success: string[]; skipped: string[]; failed: string[] },
+  isDirectory = false
 ) => {
   const lowerPath = filePath.toLowerCase()
-
-  // 获取实际的执行路径
-  let execPath = filePath
-  let appName = ''
+  let actualPath = filePath
+  let itemType = isDirectory
+    ? 'folder'
+    : await detectItemTypeForImport(filePath, async () => {
+      try {
+        const info = await stat(filePath)
+        return info.isDirectory
+      } catch {
+        return false
+      }
+    })
+  let itemName = getItemDisplayNameFromPath(filePath, isDirectory ? 'folder' : itemType)
 
   if (lowerPath.endsWith('.lnk')) {
-    // 解析快捷方式
     try {
-      execPath = await invoke<string>('resolve_shortcut', { lnkPath: filePath })
-      // 从快捷方式文件名获取应用名
-      const lnkName = filePath.split('\\').pop() || filePath.split('/').pop() || ''
-      appName = lnkName.replace(/\.lnk$/i, '')
+      actualPath = await invoke<string>('resolve_shortcut', { lnkPath: filePath })
+      itemType = await detectItemTypeForImport(actualPath) ?? 'app'
+      itemName = getItemDisplayNameFromPath(filePath, 'app')
     } catch (error) {
       console.error('解析快捷方式失败:', error)
-      results.failed.push(filePath.split('\\').pop() || filePath)
+      results.failed.push(getItemDisplayNameFromPath(filePath, 'app'))
       return
     }
-  } else if (lowerPath.endsWith('.exe')) {
-    // 直接使用 exe 文件
-    const fileName = filePath.split('\\').pop() || filePath.split('/').pop() || ''
-    appName = fileName.replace(/\.exe$/i, '')
-  } else {
-    // 不支持的文件类型，静默跳过
+  }
+
+  if (!itemType) {
     return
   }
 
-  // 检查是否已存在
-  if (appStore.isAppExists(execPath)) {
-    results.skipped.push(appName)
+  if (appStore.isAppExists(actualPath)) {
+    results.skipped.push(itemName)
     return
   }
 
-  // 添加应用
   await appStore.addApp({
-    name: appName,
-    path: execPath,
-    category: categoryId
+    name: itemName,
+    path: actualPath,
+    category: categoryId,
+    itemType
   })
-  results.success.push(appName)
+  results.success.push(itemName)
 }
 
 // 显示添加结果
@@ -276,10 +301,10 @@ const showAddResults = async (results: { success: string[]; skipped: string[]; f
   const messages: string[] = []
 
   if (results.success.length > 0) {
-    messages.push(`成功添加 ${results.success.length} 个应用`)
+    messages.push(`成功添加 ${results.success.length} 个项目`)
   }
   if (results.skipped.length > 0) {
-    messages.push(`跳过 ${results.skipped.length} 个已存在的应用`)
+    messages.push(`跳过 ${results.skipped.length} 个已存在项目`)
   }
   if (results.failed.length > 0) {
     messages.push(`${results.failed.length} 个文件处理失败`)
@@ -355,9 +380,36 @@ watch(() => appStore.currentCategory, async () => {
 onMounted(async () => {
   await nextTick()
   initSortable()
-  // 初始化 Tauri 文件拖拽事件
   initTauriDragDrop()
+  checkForUpdate()
 })
+
+const checkForUpdate = async () => {
+  try {
+    const info = await invoke<{
+      hasUpdate: boolean
+      currentVersion: string
+      latestVersion: string
+      releaseUrl: string
+      releaseNotes: string
+      downloadUrl: string
+    }>('check_app_version_update')
+
+    if (!info.hasUpdate) return
+
+    const confirmed = await ask(
+      `发现新版本 v${info.latestVersion}（当前 v${info.currentVersion}）\n\n${info.releaseNotes || ''}`.trim(),
+      { title: '发现新版本', kind: 'info', okLabel: '前往下载', cancelLabel: '稍后再说' }
+    )
+
+    if (confirmed) {
+      const url = info.downloadUrl || info.releaseUrl
+      if (url) await openUrl(url)
+    }
+  } catch {
+    // 静默失败，不影响正常使用
+  }
+}
 
 onUnmounted(() => {
   // 注意：不清理全局拖拽监听器，因为它是全局的，组件销毁后仍需保持
@@ -368,24 +420,20 @@ onUnmounted(() => {
   }
 })
 
-const handleAddApp = async () => {
-  if (!appStore.currentCategory) {
-    alert('请先选择或创建一个分类')
-    return
-  }
-
+const handleAddFiles = async () => {
   try {
-    const file = await open({
+    const file = await openFileDialog({
       multiple: true,
       filters: [{
-        name: '可执行文件',
-        extensions: ['exe', 'lnk']
+        name: '支持的项目文件',
+        extensions: SUPPORTED_IMPORT_EXTENSIONS
       }]
     })
 
     console.log('选择的文件:', file)
 
     if (file) {
+      const targetCategoryId = await ensureTargetCategory()
       const files = Array.isArray(file) ? file : [file]
       const results: { success: string[]; skipped: string[]; failed: string[] } = {
         success: [],
@@ -398,7 +446,7 @@ const handleAddApp = async () => {
         if (!filePath) continue
 
         try {
-          await processFile(filePath, appStore.currentCategory!, results)
+          await processPath(filePath, targetCategoryId, results)
         } catch (error) {
           console.error('处理文件失败:', filePath, error)
           const fileName = filePath.split('\\').pop() || filePath.split('/').pop() || filePath
@@ -409,8 +457,33 @@ const handleAddApp = async () => {
       showAddResults(results)
     }
   } catch (error) {
-    console.error('添加应用失败:', error)
-    alert(`添加应用失败: ${error}`)
+    console.error('添加项目失败:', error)
+    alert(`添加项目失败: ${error}`)
+  }
+}
+
+const handleAddFolder = async () => {
+  try {
+    const selected = await openFileDialog({
+      directory: true,
+      multiple: false
+    })
+
+    const folderPath = typeof selected === 'string' ? selected : null
+    if (!folderPath) return
+
+    const targetCategoryId = await ensureTargetCategory()
+    const results = {
+      success: [] as string[],
+      skipped: [] as string[],
+      failed: [] as string[]
+    }
+
+    await processPath(folderPath, targetCategoryId, results, true)
+    await showAddResults(results)
+  } catch (error) {
+    console.error('添加文件夹失败:', error)
+    alert(`添加文件夹失败: ${error}`)
   }
 }
 </script>

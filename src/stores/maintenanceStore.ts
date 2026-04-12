@@ -2,6 +2,7 @@ import { defineStore } from 'pinia'
 import { invoke } from '@tauri-apps/api/core'
 import { useAppStore } from './appStore'
 import type { ValidationResult, UpdateCheckResult, BatchOperationResult, Config } from '@/types'
+import { canCheckForUpdates } from '@/types'
 
 export const useMaintenanceStore = defineStore('maintenance', {
   state: () => ({
@@ -56,7 +57,7 @@ export const useMaintenanceStore = defineStore('maintenance', {
       const appStore = useAppStore()
       let count = 0
       for (const app of Object.values(appStore.config.apps)) {
-        if (!app.updateMetadata) {
+        if (canCheckForUpdates(app.itemType) && !app.updateMetadata) {
           count++
         }
       }
@@ -99,7 +100,9 @@ export const useMaintenanceStore = defineStore('maintenance', {
     // 初始化所有应用的基准数据
     async initAllUpdateBaselines() {
       const appStore = useAppStore()
-      const appIds = Object.keys(appStore.config.apps)
+      const appIds = Object.values(appStore.config.apps)
+        .filter(app => canCheckForUpdates(app.itemType))
+        .map(app => app.id)
       const total = appIds.length
 
       this.batchOperating = true
@@ -174,9 +177,9 @@ export const useMaintenanceStore = defineStore('maintenance', {
           appIds: invalidAppIds
         })
 
-        // 重新加载配置
+        // 重新加载配置（强制刷新前端状态）
         const appStore = useAppStore()
-        await appStore.init()
+        await appStore.reloadConfig()
 
         // 清理验证结果
         this.validationResults = this.validationResults.filter(

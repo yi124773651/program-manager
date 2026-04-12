@@ -11,7 +11,7 @@
               v-model="query"
               type="text"
               class="spotlight-input"
-              placeholder="搜索应用、剪贴板... (/ 网页, c: 剪贴板)"
+              placeholder="搜索项目、剪贴板... (/ 网页, c: 剪贴板)"
               @input="handleSearch"
               @keydown="handleKeydown"
             />

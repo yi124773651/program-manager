@@ -2,6 +2,10 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Mutex;
 
+fn default_item_type() -> String {
+    "app".to_string()
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UpdateMetadata {
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -30,6 +34,9 @@ pub struct App {
     pub name: String,
     pub path: String,
     pub category: String,
+    #[serde(default = "default_item_type")]
+    #[serde(rename = "itemType")]
+    pub item_type: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub icon: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -114,6 +121,9 @@ pub struct AppSettings {
     #[serde(rename = "calculatorEnabled")]
     pub calculator_enabled: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "todoScheduleEnabled")]
+    pub todo_schedule_enabled: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     #[serde(rename = "backgroundSource")]
     pub background_source: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -143,6 +153,7 @@ impl Default for AppSettings {
             quick_notes_enabled: Some(true),
             quick_notes_shortcut: Some("Alt+N".to_string()),
             calculator_enabled: Some(true),
+            todo_schedule_enabled: Some(true),
             background_source: Some("local".to_string()),
             background_api_url: None,
         }

@@ -16,8 +16,8 @@
         loading="lazy"
         @error="handleIconError"
       />
-      <div v-else class="icon-placeholder">
-        <FileIcon :size="iconSize" />
+      <div v-else class="icon-placeholder" :class="`variant-${placeholderVariant}`">
+        <component :is="placeholderIcon" :size="iconSize" />
       </div>
     </div>
 
@@ -37,14 +37,14 @@
         <!-- 启动选项 -->
         <div class="menu-item" @click="handleLaunch">
           <PlayIcon :size="14" />
-          <span>启动</span>
+          <span>{{ primaryActionLabel }}</span>
         </div>
-        <div class="menu-item" @click="handleLaunchAsAdmin">
+        <div v-if="supportsProcessActions" class="menu-item" @click="handleLaunchAsAdmin">
           <ShieldIcon :size="14" />
           <span>以管理员身份运行</span>
         </div>
 
-        <div class="menu-divider"></div>
+        <div class="menu-divider" v-if="supportsProcessActions || enabledActions.length > 0"></div>
 
         <!-- 快捷动作列表 -->
         <div
@@ -60,12 +60,12 @@
         <div class="menu-divider" v-if="enabledActions.length > 0"></div>
 
         <!-- 管理动作入口 -->
-        <div class="menu-item" @click="handleManageActions">
+        <div v-if="actionGroups.length > 0" class="menu-item" @click="handleManageActions">
           <SettingsIcon :size="14" />
           <span>管理快捷动作...</span>
         </div>
 
-        <div class="menu-divider"></div>
+        <div class="menu-divider" v-if="actionGroups.length > 0"></div>
 
         <!-- 删除 -->
         <div class="menu-item danger" @click="handleDelete">
@@ -133,13 +133,22 @@ import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useAppStore } from '@/stores/appStore'
 import { useActionsStore } from '@/stores/actionsStore'
 import {
-  FileIcon, PlayIcon, TrashIcon, ShieldIcon,
+  FileBadgeIcon, FileIcon, FileImageIcon, FileSpreadsheetIcon, FileTextIcon, FolderClosedIcon, PlayIcon, PresentationIcon, TrashIcon, ShieldIcon,
   FolderOpenIcon, LinkIcon, CopyIcon,
-  XCircleIcon,
+  XCircleIcon, NotepadTextIcon,
   SettingsIcon, XIcon, FolderIcon, CpuIcon
 } from 'lucide-vue-next'
-import type { App, ActionTemplate, ActionGroup } from '@/types'
-import { CARD_SIZES, ACTION_GROUPS, getActionsByGroup } from '@/types'
+import type { App, ActionTemplate, ActionGroup, ItemPlaceholderVariant } from '@/types'
+import {
+  CARD_SIZES,
+  ACTION_GROUPS,
+  getActionsByGroup,
+  canUseProcessActions,
+  getPrimaryActionLabel,
+  getItemPlaceholderVariant,
+  isActionSupportedForItem,
+  normalizeItemType
+} from '@/types'
 import { ask } from '@tauri-apps/plugin-dialog'
 
 // 禁用自动属性继承，手动通过 v-bind="$attrs" 控制
@@ -202,13 +211,34 @@ watch(
 
 const sizeClass = computed(() => `size-${props.size}`)
 const iconSize = computed(() => CARD_SIZES[props.size].iconSize)
+const itemType = computed(() => normalizeItemType(props.app.itemType))
+const placeholderVariant = computed(() => getItemPlaceholderVariant(props.app.path, props.app.itemType))
+const supportsProcessActions = computed(() => canUseProcessActions(itemType.value))
+const primaryActionLabel = computed(() => getPrimaryActionLabel(itemType.value))
+
+const 占位图标映射: Record<ItemPlaceholderVariant, any> = {
+  folder: FolderClosedIcon,
+  file: FileIcon,
+  pdf: FileBadgeIcon,
+  word: FileTextIcon,
+  excel: FileSpreadsheetIcon,
+  ppt: PresentationIcon,
+  text: NotepadTextIcon,
+  image: FileImageIcon
+}
+
+const placeholderIcon = computed(() => 占位图标映射[placeholderVariant.value] || FileIcon)
 
 // 获取启用的动作（排除"以管理员身份运行"，因为已经单独显示）
 const enabledActions = computed(() => {
-  return actionsStore.enabledPresetActions.filter(a => a.id !== 'run_as_admin')
+  return actionsStore.enabledPresetActions.filter(
+    action => action.id !== 'run_as_admin' && isActionSupportedForItem(action.id, itemType.value)
+  )
 })
 
-const actionGroups = ACTION_GROUPS
+const actionGroups = computed(() => {
+  return ACTION_GROUPS.filter(group => getGroupActions(group.id).length > 0)
+})
 
 // 初始化 actionsStore
 onMounted(() => {
@@ -224,7 +254,7 @@ onUnmounted(() => {
 })
 
 function getGroupActions(groupId: ActionGroup) {
-  return getActionsByGroup(groupId)
+  return getActionsByGroup(groupId).filter(action => isActionSupportedForItem(action.id, itemType.value))
 }
 
 // 图标映射
@@ -252,7 +282,7 @@ const handleLaunch = async () => {
   try {
     await appStore.launchApp(props.app.id)
   } catch (error) {
-    alert(`启动失败: ${error}`)
+    alert(`${primaryActionLabel.value}失败: ${error}`)
   }
 }
 
@@ -419,8 +449,59 @@ const handleIconError = () => {
   display: flex;
   align-items: center;
   justify-content: center;
+  padding: 10px;
+  border-radius: 18px;
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  background: rgba(148, 163, 184, 0.1);
   color: var(--text-secondary);
-  opacity: 0.5;
+}
+
+.icon-placeholder.variant-folder {
+  color: #b7791f;
+  background: rgba(245, 158, 11, 0.14);
+  border-color: rgba(245, 158, 11, 0.24);
+}
+
+.icon-placeholder.variant-pdf {
+  color: #dc2626;
+  background: rgba(239, 68, 68, 0.12);
+  border-color: rgba(239, 68, 68, 0.24);
+}
+
+.icon-placeholder.variant-word {
+  color: #2563eb;
+  background: rgba(59, 130, 246, 0.12);
+  border-color: rgba(59, 130, 246, 0.24);
+}
+
+.icon-placeholder.variant-excel {
+  color: #15803d;
+  background: rgba(34, 197, 94, 0.12);
+  border-color: rgba(34, 197, 94, 0.24);
+}
+
+.icon-placeholder.variant-ppt {
+  color: #ea580c;
+  background: rgba(249, 115, 22, 0.12);
+  border-color: rgba(249, 115, 22, 0.24);
+}
+
+.icon-placeholder.variant-text {
+  color: #475569;
+  background: rgba(100, 116, 139, 0.12);
+  border-color: rgba(100, 116, 139, 0.24);
+}
+
+.icon-placeholder.variant-image {
+  color: #0f766e;
+  background: rgba(20, 184, 166, 0.12);
+  border-color: rgba(20, 184, 166, 0.24);
+}
+
+.icon-placeholder.variant-file {
+  color: var(--text-secondary);
+  background: rgba(148, 163, 184, 0.1);
+  border-color: rgba(148, 163, 184, 0.18);
 }
 
 .app-name {

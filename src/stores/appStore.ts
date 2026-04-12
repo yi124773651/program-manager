@@ -1,8 +1,8 @@
 import { defineStore } from 'pinia'
 import { invoke } from '@tauri-apps/api/core'
 import { convertFileSrc } from '@tauri-apps/api/core'
-import type { App, Category, Config, AppSettings } from '@/types'
-import { DEFAULT_CONFIG } from '@/types'
+import type { App, Category, Config, AppSettings, ManagedItemType } from '@/types'
+import { DEFAULT_CONFIG, canCheckForUpdates } from '@/types'
 
 // 图标目录路径缓存
 let iconsDir: string | null = null
@@ -90,6 +90,15 @@ export const useAppStore = defineStore('app', {
   actions: {
     async init() {
       if (this.initialized) return
+      await this.loadConfig()
+    },
+
+    // 重新加载配置（强制从后端读取最新数据）
+    async reloadConfig() {
+      await this.loadConfig()
+    },
+
+    async loadConfig() {
       this.loading = true
       try {
         const config = await invoke<Config>('load_config')
@@ -104,7 +113,8 @@ export const useAppStore = defineStore('app', {
         this.currentCategory = config.settings.lastCategory || this.categories[0]?.id || null
         this.initialized = true
 
-        // 预加载图标 URL 缓存
+        // 重建图标 URL 缓存
+        this.iconUrlCache = {}
         this.preloadIconUrls()
       } catch (error) {
         console.error('加载配置失败:', error)
@@ -201,11 +211,12 @@ export const useAppStore = defineStore('app', {
       }
     },
 
-    async addApp(appData: { name: string; path: string; category: string }): Promise<App> {
+    async addApp(appData: { name: string; path: string; category: string; itemType?: ManagedItemType }): Promise<App> {
       const app = await invoke<App>('add_app', {
         name: appData.name,
         path: appData.path,
-        categoryId: appData.category
+        categoryId: appData.category,
+        itemType: appData.itemType
       })
       this.config.apps[app.id] = app
       this.config.categories[appData.category]?.apps.push(app.id)
@@ -219,10 +230,12 @@ export const useAppStore = defineStore('app', {
         })
       }
 
-      // 初始化更新基准数据（后台静默执行，不阻塞用户操作）
-      invoke('init_update_baseline', { appId: app.id }).catch(err => {
-        console.warn(`初始化基准数据失败 (${app.name}):`, err)
-      })
+      // 只有可执行程序才参与更新基准初始化
+      if (canCheckForUpdates(app.itemType)) {
+        invoke('init_update_baseline', { appId: app.id }).catch(err => {
+          console.warn(`初始化基准数据失败 (${app.name}):`, err)
+        })
+      }
 
       await this.saveConfig()
       return app

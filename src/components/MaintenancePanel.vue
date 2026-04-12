@@ -35,9 +35,9 @@
               <p class="section-desc">扫描所有程序，找出文件不存在或无法访问的项目</p>
             </div>
 
-            <div class="action-panel">
-              <button
-                class="btn-primary"
+              <div class="action-panel">
+                <button
+                  class="btn-primary"
                 :disabled="maintenanceStore.validating"
                 @click="handleValidate"
               >
@@ -45,7 +45,7 @@
                 <span v-else>检测中...</span>
               </button>
               <div class="info-text">
-                共 {{ totalApps }} 个程序
+                共 {{ totalItems }} 个项目
               </div>
             </div>
 
@@ -60,7 +60,7 @@
               <div class="results-header">
                 <h4>检测结果</h4>
                 <div class="results-summary">
-                  发现 <strong>{{ maintenanceStore.invalidAppCount }}</strong> 个失效项
+                  发现 <strong>{{ maintenanceStore.invalidAppCount }}</strong> 个失效项目
                 </div>
               </div>
 
@@ -90,7 +90,7 @@
                   :disabled="maintenanceStore.batchOperating"
                   @click="handleBatchDelete"
                 >
-                  批量删除失效项 ({{ maintenanceStore.invalidAppCount }})
+                  批量删除失效项目 ({{ maintenanceStore.invalidAppCount }})
                 </button>
               </div>
             </div>
@@ -111,7 +111,7 @@
               <div class="warning-content">
                 <div class="warning-title">需要初始化基准数据</div>
                 <div class="warning-desc">
-                  发现 <strong>{{ maintenanceStore.uninitializedCount }}</strong> 个程序未初始化基准数据，需要初始化后才能检测更新
+                  发现 <strong>{{ maintenanceStore.uninitializedCount }}</strong> 个可执行程序未初始化基准数据，需要初始化后才能检测更新
                 </div>
               </div>
               <button
@@ -140,14 +140,14 @@
             <div class="action-panel">
               <button
                 class="btn-primary"
-                :disabled="maintenanceStore.checkingUpdates || maintenanceStore.uninitializedCount === totalApps"
+                :disabled="maintenanceStore.checkingUpdates || maintenanceStore.uninitializedCount === executableItemCount"
                 @click="handleCheckUpdates"
               >
                 <span v-if="!maintenanceStore.checkingUpdates">开始检测更新</span>
                 <span v-else>检测中...</span>
               </button>
               <div class="info-text">
-                共 {{ totalApps - maintenanceStore.uninitializedCount }} 个程序已初始化
+                共 {{ executableItemCount - maintenanceStore.uninitializedCount }} 个可执行程序已初始化
               </div>
             </div>
 
@@ -209,6 +209,9 @@
       </div>
 
       <div class="maintenance-footer">
+        <transition name="fade">
+          <span v-if="statusMessage" class="status-message" :class="statusType">{{ statusMessage }}</span>
+        </transition>
         <button class="btn-secondary" @click="$emit('close')">关闭</button>
       </div>
     </div>
@@ -220,6 +223,7 @@ import { ref, computed } from 'vue'
 import { XIcon, AlertCircleIcon } from 'lucide-vue-next'
 import { useMaintenanceStore } from '@/stores/maintenanceStore'
 import { useAppStore } from '@/stores/appStore'
+import { canCheckForUpdates } from '@/types'
 
 defineEmits(['close'])
 
@@ -227,8 +231,13 @@ const maintenanceStore = useMaintenanceStore()
 const appStore = useAppStore()
 
 const activeTab = ref<'cleanup' | 'update'>('cleanup')
+const statusMessage = ref('')
+const statusType = ref<'success' | 'error'>('success')
 
-const totalApps = computed(() => Object.keys(appStore.config.apps).length)
+const totalItems = computed(() => Object.keys(appStore.config.apps).length)
+const executableItemCount = computed(() => {
+  return Object.values(appStore.config.apps).filter(app => canCheckForUpdates(app.itemType)).length
+})
 
 const confidenceLabel = (confidence: string) => {
   switch (confidence) {
@@ -251,16 +260,22 @@ const handleValidate = async () => {
   }
 }
 
+const showStatus = (msg: string, type: 'success' | 'error' = 'success') => {
+  statusMessage.value = msg
+  statusType.value = type
+  setTimeout(() => { statusMessage.value = '' }, 3000)
+}
+
 const handleBatchDelete = async () => {
-  if (!confirm(`确定要删除 ${maintenanceStore.invalidAppCount} 个失效项吗？此操作不可撤销。`)) {
+  if (!confirm(`确定要删除 ${maintenanceStore.invalidAppCount} 个失效项目吗？此操作不可撤销。`)) {
     return
   }
 
   try {
     const result = await maintenanceStore.batchDeleteInvalidApps()
-    alert(`成功删除 ${result?.succeeded ?? 0} 个失效项`)
+    showStatus(`成功删除 ${result?.succeeded ?? 0} 个失效项`)
   } catch (error) {
-    alert(`删除失败: ${error}`)
+    showStatus(`删除失败: ${error}`, 'error')
   }
 }
 
@@ -645,5 +660,26 @@ button:disabled {
   border-top: 1px solid var(--border-color);
   display: flex;
   justify-content: flex-end;
+  align-items: center;
+  gap: 12px;
+}
+
+.status-message {
+  margin-right: auto;
+  font-size: 13px;
+  font-weight: 500;
+}
+.status-message.success {
+  color: #52c41a;
+}
+.status-message.error {
+  color: #ff4d4f;
+}
+
+.fade-enter-active, .fade-leave-active {
+  transition: opacity 0.3s;
+}
+.fade-enter-from, .fade-leave-to {
+  opacity: 0;
 }
 </style>
