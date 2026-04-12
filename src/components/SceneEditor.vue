@@ -247,7 +247,7 @@ import { useAppStore } from '@/stores/appStore'
 import { XIcon, PlusIcon, TrashIcon, GripVerticalIcon, PlayIcon, ArrowLeftIcon, ZapIcon, RocketIcon, ShieldIcon, GlobeIcon, FolderOpenIcon, FileIcon, XCircleIcon, ClockIcon, BellIcon, ChevronDownIcon, ChevronRightIcon } from 'lucide-vue-next'
 import { open } from '@tauri-apps/plugin-dialog'
 import type { Scene, SceneAction, SceneActionType, App } from '@/types'
-import { SCENE_ICONS, SCENE_ACTION_TYPES } from '@/types'
+import { SCENE_ICONS, SCENE_ACTION_TYPES, canUseProcessActions } from '@/types'
 import Sortable from 'sortablejs'
 
 const props = defineProps<{ scene: Scene }>()
@@ -287,7 +287,7 @@ const appCategories = computed(() => {
     apps: cat.apps
       .map(appId => {
         const app = appStore.config.apps[appId]
-        if (!app) return null
+        if (!app || !canUseProcessActions(app.itemType)) return null
         // 使用缓存的图标URL
         const iconUrl = appStore.iconUrlCache[app.id] || (app.icon?.startsWith('data:') ? app.icon : undefined)
         return { ...app, iconUrl }

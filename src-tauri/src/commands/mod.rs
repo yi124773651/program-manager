@@ -50,6 +50,7 @@ pub fn add_app(
     name: String,
     path: String,
     category_id: String,
+    item_type: Option<String>,
     state: State<AppState>,
 ) -> Result<App, String> {
     let mut config = state.config.lock().unwrap();
@@ -59,17 +60,24 @@ pub fn add_app(
         .unwrap()
         .as_secs();
 
+    let item_type = item_type.unwrap_or_else(|| "app".to_string());
+
     // 生成应用 ID
     let app_id = uuid::Uuid::new_v4().to_string();
 
-    // 提取图标并保存到文件（新方式）
-    let icon = crate::utils::icon_extractor::extract_icon_to_file(&path, &app_id).ok();
+    // 只有可执行程序才尝试提取图标
+    let icon = if item_type == "app" {
+        crate::utils::icon_extractor::extract_icon_to_file(&path, &app_id).ok()
+    } else {
+        None
+    };
 
     let app = App {
         id: app_id,
         name,
         path,
         category: category_id.clone(),
+        item_type,
         icon,
         last_launched: None,
         created_at: now,
@@ -581,6 +589,10 @@ pub fn init_update_baseline(app_id: String, state: State<AppState>) -> Result<()
         .get_mut(&app_id)
         .ok_or_else(|| "应用不存在".to_string())?;
 
+    if app.item_type != "app" {
+        return Ok(());
+    }
+
     // 获取文件元数据
     let (size, modified_time) = crate::utils::app_validator::get_file_metadata(&app.path)
         .ok_or_else(|| "无法读取文件元数据".to_string())?;
@@ -616,7 +628,11 @@ pub fn init_all_baselines(state: State<AppState>) -> Result<BatchOperationResult
     use crate::models::UpdateMetadata;
 
     let mut config = state.config.lock().unwrap();
-    let total = config.apps.len();
+    let total = config
+        .apps
+        .values()
+        .filter(|app| app.item_type == "app")
+        .count();
     let mut completed = 0;
     let mut succeeded = 0;
     let mut errors = Vec::new();
@@ -627,6 +643,10 @@ pub fn init_all_baselines(state: State<AppState>) -> Result<BatchOperationResult
         .as_secs();
 
     for (app_id, app) in config.apps.iter_mut() {
+        if app.item_type != "app" {
+            continue;
+        }
+
         completed += 1;
 
         // 跳过已初始化的
@@ -682,6 +702,22 @@ pub fn check_app_update(app_id: String, state: State<AppState>) -> Result<Update
         .get(&app_id)
         .ok_or_else(|| "应用不存在".to_string())?;
 
+    if app.item_type != "app" {
+        return Ok(UpdateCheckResult {
+            app_id: app_id.clone(),
+            app_name: app.name.clone(),
+            has_update: false,
+            confidence: "low".to_string(),
+            details: UpdateCheckDetails {
+                old_version: None,
+                new_version: None,
+                file_changed: false,
+                size_changed: false,
+                modified_time_changed: false,
+            },
+        });
+    }
+
     let metadata = app.update_metadata.as_ref();
     let baseline_version = metadata.and_then(|m| m.baseline_version.clone());
     let baseline_size = metadata.and_then(|m| m.baseline_file_size);
@@ -716,6 +752,10 @@ pub fn check_all_updates(state: State<AppState>) -> Result<Vec<UpdateCheckResult
     let mut results = Vec::new();
 
     for (app_id, app) in &config.apps {
+        if app.item_type != "app" {
+            continue;
+        }
+
         let metadata = app.update_metadata.as_ref();
         let baseline_version = metadata.and_then(|m| m.baseline_version.clone());
         let baseline_size = metadata.and_then(|m| m.baseline_file_size);
