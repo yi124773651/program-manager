@@ -25,7 +25,7 @@
     <template v-if="activeTab === 'categories'">
       <div class="category-header">
         <h2>分类</h2>
-        <button class="add-btn" @click="handleAddCategory" title="添加分类">
+        <button class="header-add-btn icon-only" @click="handleAddCategory" title="添加分类">
           <PlusIcon :size="16" />
         </button>
       </div>
@@ -64,8 +64,8 @@
           <ZapIcon :size="16" />
           <span>场景</span>
         </div>
-        <button class="add-btn small" @click="handleAddScene" title="新建场景">
-          <PlusIcon :size="14" />
+        <button class="header-add-btn icon-only" @click="handleAddScene" title="新建场景">
+          <PlusIcon :size="16" />
         </button>
       </div>
       <div class="scenes-list">
@@ -274,7 +274,7 @@ const handleDelete = async () => {
   hideContextMenu()
 
   const confirmMsg = category.apps.length > 0
-    ? `分类"${category.name}"中有 ${category.apps.length} 个应用，删除后应用也会被删除。确定继续吗？`
+    ? `分类"${category.name}"中有 ${category.apps.length} 个项目，删除后项目也会被删除。确定继续吗？`
     : `确定要删除分类"${category.name}"吗？`
 
   // 使用 Tauri 的 dialog
@@ -589,23 +589,30 @@ onUnmounted(() => {
   margin: 0;
 }
 
-.add-btn {
-  width: 32px;
-  height: 32px;
-  border-radius: 8px;
-  background: var(--btn-primary);
-  color: white;
+.header-add-btn {
   display: flex;
   align-items: center;
-  justify-content: center;
-  transition: all 0.3s ease;
-  box-shadow: var(--shadow-sm);
+  gap: 6px;
+  padding: 8px 12px;
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 500;
+  transition: all 0.2s;
 }
 
-.add-btn:hover {
-  background: var(--btn-primary-hover);
-  box-shadow: var(--shadow-colored);
-  transform: translateY(-2px);
+.header-add-btn:hover {
+  background: var(--category-hover);
+}
+
+.header-add-btn.icon-only {
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  justify-content: center;
+  gap: 0;
 }
 
 .categories {
@@ -794,23 +801,6 @@ onUnmounted(() => {
   color: var(--text-secondary);
   text-transform: uppercase;
   letter-spacing: 0.5px;
-}
-
-.add-btn.small {
-  width: 24px;
-  height: 24px;
-  border-radius: 6px;
-  background: var(--btn-primary);
-  color: white;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: all 0.2s;
-}
-
-.add-btn.small:hover {
-  background: var(--btn-primary-hover);
-  transform: scale(1.1);
 }
 
 .scenes-list {

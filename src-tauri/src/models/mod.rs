@@ -2,6 +2,10 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Mutex;
 
+fn default_item_type() -> String {
+    "app".to_string()
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UpdateMetadata {
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -30,6 +34,9 @@ pub struct App {
     pub name: String,
     pub path: String,
     pub category: String,
+    #[serde(default = "default_item_type")]
+    #[serde(rename = "itemType")]
+    pub item_type: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub icon: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]

@@ -1,4 +1,7 @@
+import type { ManagedItemType } from './itemSupport'
+
 export * from './todo'
+export * from './itemSupport'
 
 // 更新检测元数据
 export interface UpdateMetadata {
@@ -16,6 +19,7 @@ export interface App {
   name: string
   path: string
   category: string
+  itemType?: ManagedItemType
   icon?: string  // base64 编码的图标
   lastLaunched?: number
   createdAt: number

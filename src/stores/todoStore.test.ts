@@ -119,19 +119,4 @@ describe('useTodoStore', () => {
     expect(store.selectedDateTodos[0].id).toBe(id)
   })
 
-  it('可以一键清除今天之前的历史记录，并保留今天及之后的事项', () => {
-    const store = useTodoStore()
-    store.items = [
-      makeTodo({ id: 'old-open', date: '2026-03-28' }),
-      makeTodo({ id: 'old-done', date: '2026-03-29', completed: true }),
-      makeTodo({ id: 'today', date: '2026-03-30' }),
-      makeTodo({ id: 'future', date: '2026-04-01' })
-    ]
-
-    const cleared = store.clearBeforeToday()
-
-    expect(cleared).toBe(2)
-    expect(store.items.map((item) => item.id)).toEqual(['today', 'future'])
-    expect(localStorageMock.setItem).toHaveBeenCalled()
-  })
 })

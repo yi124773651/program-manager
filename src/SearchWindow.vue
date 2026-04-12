@@ -8,7 +8,7 @@
         v-model="query"
         type="text"
         class="spotlight-input"
-        placeholder="搜索应用... (/ 网页, c: 剪贴板, = 计算器)"
+        placeholder="搜索项目... (/ 网页, c: 剪贴板, = 计算器)"
         @input="handleSearch"
         @keydown="handleInputKeydown"
         @mousedown.stop
