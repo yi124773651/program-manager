@@ -220,32 +220,49 @@ pub fn is_context_menu_registered() -> bool {
 pub fn resolve_shortcut(lnk_path: String) -> Result<String, String> {
     #[cfg(target_os = "windows")]
     {
-        use lnk::ShellLink;
+        use windows::core::{HSTRING, PCWSTR};
+        use windows::Win32::System::Com::{
+            CoCreateInstance, CoInitializeEx, CoUninitialize,
+            CLSCTX_INPROC_SERVER, COINIT_APARTMENTTHREADED,
+        };
+        use windows::core::Interface;
+        use windows::Win32::UI::Shell::{IShellLinkW, ShellLink};
+        use windows::Win32::Storage::FileSystem::WIN32_FIND_DATAW;
 
-        let shortcut = ShellLink::open(&lnk_path)
-            .map_err(|e| format!("无法打开快捷方式: {:?}", e))?;
+        unsafe {
+            let _ = CoInitializeEx(None, COINIT_APARTMENTTHREADED);
 
-        // 获取目标路径
-        if let Some(target) = shortcut.relative_path() {
-            // 相对路径需要结合工作目录
-            let lnk_dir = std::path::Path::new(&lnk_path)
-                .parent()
-                .map(|p| p.to_path_buf())
-                .unwrap_or_default();
-            let full_path = lnk_dir.join(target);
-            if full_path.exists() {
-                return Ok(full_path.to_string_lossy().to_string());
+            let shell_link: IShellLinkW =
+                CoCreateInstance(&ShellLink, None, CLSCTX_INPROC_SERVER)
+                    .map_err(|e| format!("无法创建 ShellLink: {}", e))?;
+
+            let persist_file: windows::Win32::System::Com::IPersistFile = shell_link
+                .cast()
+                .map_err(|e| format!("无法获取 IPersistFile: {}", e))?;
+
+            let wide_path = HSTRING::from(&lnk_path);
+            persist_file
+                .Load(PCWSTR(wide_path.as_ptr()), windows::Win32::System::Com::STGM(0))
+                .map_err(|e| format!("无法加载快捷方式: {}", e))?;
+
+            let mut path_buf = [0u16; 260];
+            let mut find_data = WIN32_FIND_DATAW::default();
+            shell_link
+                .GetPath(&mut path_buf, &mut find_data, 0)
+                .map_err(|e| format!("无法获取目标路径: {}", e))?;
+
+            CoUninitialize();
+
+            let path_len = path_buf.iter().position(|&c| c == 0).unwrap_or(path_buf.len());
+            let path = String::from_utf16(&path_buf[..path_len])
+                .map_err(|e| format!("路径编码转换失败: {}", e))?;
+
+            if path.is_empty() {
+                return Err("无法获取快捷方式目标路径".to_string());
             }
-        }
 
-        // 尝试获取绝对路径
-        if let Some(link_info) = shortcut.link_info() {
-            if let Some(local_path) = link_info.local_base_path() {
-                return Ok(local_path.to_string());
-            }
+            Ok(path)
         }
-
-        Err("无法获取快捷方式目标路径".to_string())
     }
 
     #[cfg(not(target_os = "windows"))]
