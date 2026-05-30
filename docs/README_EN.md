@@ -4,7 +4,7 @@
 
 **A Modern, Lightweight Application Launcher & Productivity Tool**
 
-[![Version](https://img.shields.io/badge/Version-1.1.4-blue?style=flat-square)](https://github.com/yi124773651/program-manager/releases)
+[![Version](https://img.shields.io/badge/Version-1.1.5-blue?style=flat-square)](https://github.com/yi124773651/program-manager/releases)
 [![GitHub](https://img.shields.io/badge/GitHub-Repository-181717?style=flat-square&logo=github&logoColor=white)](https://github.com/yi124773651/program-manager)
 
 [![Tauri](https://img.shields.io/badge/Tauri-2.0-24C8D8?style=flat-square&logo=tauri&logoColor=white)](https://tauri.app/)
