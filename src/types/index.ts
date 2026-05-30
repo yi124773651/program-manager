@@ -49,11 +49,15 @@ export interface ClipboardItem {
   pinned: boolean   // 是否置顶
 }
 
+// 界面风格预设
+export type ThemePreset = 'fresh-dawn' | 'deep-obsidian' | 'warm-terracotta'
+
 // 应用设置
 export interface AppSettings {
   cardSize: 'small' | 'medium' | 'large'
   lastCategory?: string
   theme: 'light' | 'dark' | 'auto'
+  themePreset?: ThemePreset  // 界面风格预设
   sortBy: 'name' | 'lastLaunched' | 'custom'
   themeColor?: string  // 自定义主题色
   backgroundImage?: string  // 背景图片（base64 或路径）
@@ -114,6 +118,7 @@ export const DEFAULT_CONFIG: Config = {
   settings: {
     cardSize: 'medium',
     theme: 'auto',
+    themePreset: 'fresh-dawn',
     sortBy: 'lastLaunched',
     themeColor: '#007AFF',
     backgroundOpacity: 0.3,

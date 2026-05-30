@@ -17,6 +17,50 @@
             <p class="section-description">自定义应用的外观和主题</p>
           </div>
 
+          <!-- 界面风格 -->
+          <div class="setting-item theme-preset-setting">
+            <div class="setting-info">
+              <div class="setting-label">界面风格</div>
+              <div class="setting-desc">切换整体背景、玻璃层次和文字对比；不会自动覆盖主题色</div>
+            </div>
+            <div class="setting-control theme-preset-control">
+              <div class="theme-preset-grid">
+                <div
+                  v-for="preset in themePresetOptions"
+                  :key="preset.id"
+                  class="theme-preset-card"
+                  :class="{ active: selectedThemePreset === preset.id }"
+                >
+                  <button
+                    type="button"
+                    class="theme-preset-select"
+                    @click="updateThemePreset(preset.id)"
+                  >
+                    <div>
+                      <div class="theme-preset-title">{{ preset.name }}</div>
+                      <div class="theme-preset-desc">{{ preset.description }}</div>
+                    </div>
+                    <div class="theme-preset-swatches" aria-hidden="true">
+                      <span
+                        v-for="swatch in preset.swatches"
+                        :key="swatch"
+                        class="theme-preset-swatch"
+                        :style="{ background: swatch }"
+                      ></span>
+                    </div>
+                  </button>
+                  <button
+                    type="button"
+                    class="btn-secondary recommended-color-btn"
+                    @click.stop="applyPresetRecommendedColor(preset.id)"
+                  >
+                    使用推荐主色
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+
           <!-- 主题色选择 -->
           <div class="setting-item">
             <div class="setting-info">
@@ -548,7 +592,7 @@ import { useClipboardStore } from '@/stores/clipboardStore'
 import { useNotesStore } from '@/stores/notesStore'
 import { useScenesStore } from '@/stores/scenesStore'
 import { useTodoStore } from '@/stores/todoStore'
-import { DEFAULT_THEME_COLORS, type AppSettings } from '@/types'
+import { DEFAULT_THEME_COLORS, type AppSettings, type ThemePreset } from '@/types'
 import { tauriAdapter, type LocalDataImportPreview, type LocalDataSection } from '@/adapters/tauriAdapter'
 import {
   canImportLocalData,
@@ -568,6 +612,7 @@ import {
   type ShortcutField
 } from '@/services/shortcutService'
 import MaintenancePanel from './MaintenancePanel.vue'
+import { normalizeThemePreset, THEME_PRESET_META, THEME_PRESETS } from '@/services/themeService'
 
 defineEmits(['close'])
 
@@ -582,6 +627,8 @@ const apiBackgroundLoading = ref(false)
 
 // 预设主题色
 const themeColors = DEFAULT_THEME_COLORS
+const themePresetOptions = THEME_PRESETS.map((preset) => THEME_PRESET_META[preset])
+const selectedThemePreset = computed(() => normalizeThemePreset(settings.value.themePreset))
 const shortcutControls = SHORTCUT_DEFINITIONS
 const shortcutSaving = ref<ShortcutField | null>(null)
 const recordingShortcutField = ref<ShortcutField | null>(null)
@@ -703,8 +750,15 @@ onUnmounted(() => {
 // 更新主题色
 const updateThemeColor = async (color: string) => {
   await appStore.updateSettings({ themeColor: color })
-  // 应用主题色到 CSS 变量
-  document.documentElement.style.setProperty('--primary-color', color)
+}
+
+// 切换界面风格只更新预设字段，保留用户当前自定义主题色。
+const updateThemePreset = async (preset: ThemePreset) => {
+  await appStore.updateSettings({ themePreset: preset })
+}
+
+const applyPresetRecommendedColor = async (preset: ThemePreset) => {
+  await updateThemeColor(THEME_PRESET_META[preset].recommendedPrimaryColor)
 }
 
 // 选择背景图片
@@ -1048,6 +1102,84 @@ const handleImportLocalData = async () => {
 .slider-control {
   min-width: 240px;
   max-width: 300px;
+}
+
+/* 界面风格 */
+.theme-preset-setting {
+  align-items: flex-start;
+}
+
+.theme-preset-control {
+  flex: 0 1 460px;
+}
+
+.theme-preset-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  width: 100%;
+}
+
+.theme-preset-card {
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  background: var(--bg-primary);
+  overflow: hidden;
+  transition: border-color 0.2s, box-shadow 0.2s, transform 0.2s;
+}
+
+.theme-preset-card.active {
+  border-color: var(--primary-color);
+  box-shadow: 0 0 0 2px rgba(0, 122, 255, 0.12);
+}
+
+.theme-preset-card:hover {
+  transform: translateY(-1px);
+}
+
+.theme-preset-select {
+  width: 100%;
+  min-height: 118px;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 12px;
+  text-align: left;
+  color: var(--text-primary);
+}
+
+.theme-preset-title {
+  font-size: 13px;
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+
+.theme-preset-desc {
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--text-secondary);
+}
+
+.theme-preset-swatches {
+  display: flex;
+  gap: 5px;
+}
+
+.theme-preset-swatch {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: 1px solid var(--border-color);
+}
+
+.recommended-color-btn {
+  width: calc(100% - 16px);
+  min-width: 0;
+  justify-content: center;
+  margin: 0 8px 8px;
+  padding: 6px 8px;
+  font-size: 12px;
 }
 
 /* 主题色选择器 */

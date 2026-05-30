@@ -6,6 +6,10 @@ fn default_item_type() -> String {
     "app".to_string()
 }
 
+fn default_theme_preset() -> Option<String> {
+    Some("fresh-dawn".to_string())
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UpdateMetadata {
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -76,6 +80,10 @@ pub struct AppSettings {
     #[serde(rename = "lastCategory")]
     pub last_category: Option<String>,
     pub theme: String,
+    #[serde(default = "default_theme_preset")]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "themePreset")]
+    pub theme_preset: Option<String>,
     #[serde(rename = "sortBy")]
     pub sort_by: String,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -141,6 +149,7 @@ impl Default for AppSettings {
             card_size: "medium".to_string(),
             last_category: None,
             theme: "auto".to_string(),
+            theme_preset: Some("fresh-dawn".to_string()),
             sort_by: "lastLaunched".to_string(),
             theme_color: Some("#007AFF".to_string()),
             background_image: None,
@@ -194,4 +203,25 @@ impl Default for Config {
 
 pub struct AppState {
     pub config: Mutex<Config>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{AppSettings, Config};
+
+    #[test]
+    fn 旧设置缺少主题预设时会回退到默认值() {
+        let settings: AppSettings =
+            serde_json::from_str(r#"{"cardSize":"medium","theme":"auto","sortBy":"lastLaunched"}"#)
+                .expect("旧设置应能反序列化");
+
+        assert_eq!(settings.theme_preset.as_deref(), Some("fresh-dawn"));
+    }
+
+    #[test]
+    fn 默认配置序列化使用前端字段名() {
+        let json = serde_json::to_value(Config::default()).expect("默认配置应能序列化");
+
+        assert_eq!(json["settings"]["themePreset"].as_str(), Some("fresh-dawn"));
+    }
 }

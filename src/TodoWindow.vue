@@ -164,8 +164,10 @@ import { getCurrentWindow } from '@tauri-apps/api/window'
 import { ask } from '@tauri-apps/plugin-dialog'
 import { storeToRefs } from 'pinia'
 import { useTodoStore } from '@/stores/todoStore'
+import { useAppStore } from '@/stores/appStore'
 import { getTodayDateKey } from '@/types/todo'
 import TodoItemRow from '@/components/TodoItemRow.vue'
+import { applyThemeSettings } from '@/services/themeService'
 
 const weekdays = ['日', '一', '二', '三', '四', '五', '六']
 
@@ -187,6 +189,7 @@ const scheduleMidnightRefresh = () => {
 scheduleMidnightRefresh()
 
 const todoStore = useTodoStore()
+const appStore = useAppStore()
 const { items, selectedDate, overdueTodos, selectedDateTodos, completedTodos } = storeToRefs(todoStore)
 const showCompleted = ref(false)
 const showDetails = ref(false)
@@ -397,7 +400,17 @@ watch(completedTodos, (items) => {
   }
 })
 
+watch(() => [
+  appStore.settings.theme,
+  appStore.settings.themePreset,
+  appStore.settings.themeColor,
+  appStore.settings.windowOpacity
+], () => {
+  applyThemeSettings(appStore.settings)
+}, { immediate: true })
+
 onMounted(async () => {
+  await appStore.init()
   await todoStore.init()
   syncFormDate()
   quickInputRef.value?.focus()
@@ -424,23 +437,16 @@ onBeforeUnmount(() => {
   flex-direction: column;
   overflow: hidden;
   border-radius: 16px;
-  background: rgba(255, 255, 255, 0.88);
-  backdrop-filter: blur(20px) saturate(180%);
-  -webkit-backdrop-filter: blur(20px) saturate(180%);
-  border: 1px solid rgba(255, 255, 255, 0.35);
+  background: var(--floating-window-bg);
+  backdrop-filter: var(--backdrop-blur);
+  -webkit-backdrop-filter: var(--backdrop-blur);
+  border: 1px solid var(--floating-window-border);
   box-shadow: var(--shadow-xl);
 }
 
 .todo-window,
 .todo-window * {
   box-sizing: border-box;
-}
-
-@media (prefers-color-scheme: dark) {
-  .todo-window {
-    background: rgba(30, 30, 30, 0.88);
-    border-color: rgba(255, 255, 255, 0.12);
-  }
 }
 
 .todo-header {

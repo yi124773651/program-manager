@@ -284,6 +284,7 @@ import {
 } from 'lucide-vue-next'
 import type { SearchResult, SearchResultType } from '@/types/search'
 import { SEARCH_RESULT_ORDER } from '@/services/searchService'
+import { applyThemeSettings } from '@/services/themeService'
 
 const appStore = useAppStore()
 const searchStore = useSearchStore()
@@ -293,6 +294,15 @@ const { debouncedSearch, selectNext, selectPrev, selectIndex, executeResult } = 
 const inputRef = ref<HTMLInputElement | null>(null)
 
 const hasResults = computed(() => results.value.length > 0)
+
+watch(() => [
+  appStore.settings.theme,
+  appStore.settings.themePreset,
+  appStore.settings.themeColor,
+  appStore.settings.windowOpacity
+], () => {
+  applyThemeSettings(appStore.settings)
+}, { immediate: true })
 
 const groupedResults = computed(() => {
   const groups: Record<SearchResultType, SearchResult[]> = {
@@ -445,22 +455,15 @@ onMounted(async () => {
 .search-window {
   width: 100%;
   height: 100%;
-  background: rgba(255, 255, 255, 0.45);
-  backdrop-filter: blur(30px) saturate(200%);
-  -webkit-backdrop-filter: blur(30px) saturate(200%);
-  border: 1px solid rgba(255, 255, 255, 0.4);
+  background: var(--floating-window-bg);
+  backdrop-filter: var(--backdrop-blur);
+  -webkit-backdrop-filter: var(--backdrop-blur);
+  border: 1px solid var(--floating-window-border);
   border-radius: 16px;
   overflow: hidden;
   display: flex;
   flex-direction: column;
   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
-}
-
-@media (prefers-color-scheme: dark) {
-  .search-window {
-    background: rgba(30, 30, 30, 0.45);
-    border: 1px solid rgba(255, 255, 255, 0.15);
-  }
 }
 
 .spotlight-input-wrapper {

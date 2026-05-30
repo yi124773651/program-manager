@@ -43,6 +43,7 @@ import QuickNotes from './components/QuickNotes.vue'
 import { listen } from '@tauri-apps/api/event'
 import { legacyMigrationService } from '@/services/legacyMigrationService'
 import { matchesKeyboardEvent } from '@/services/shortcutService'
+import { applyThemeSettings } from '@/services/themeService'
 import {
   detectItemTypeFromPath,
   getItemDisplayNameFromPath
@@ -115,40 +116,14 @@ const handleKeydown = (event: KeyboardEvent) => {
   }
 }
 
-// 应用主题色
-const applyThemeColor = (color: string) => {
-  document.documentElement.style.setProperty('--primary-color', color)
-  // 计算 hover 颜色
-  const rgb = hexToRgb(color)
-  if (rgb) {
-    const hoverColor = `rgb(${Math.max(rgb.r - 20, 0)}, ${Math.max(rgb.g - 20, 0)}, ${Math.max(rgb.b - 20, 0)})`
-    document.documentElement.style.setProperty('--primary-hover', hoverColor)
-  }
-}
-
-// 十六进制转 RGB
-const hexToRgb = (hex: string) => {
-  const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex)
-  return result ? {
-    r: parseInt(result[1], 16),
-    g: parseInt(result[2], 16),
-    b: parseInt(result[3], 16)
-  } : null
-}
-
-// 监听窗口透明度变化 - 使用 CSS 变量实现
-watch(() => settings.value.windowOpacity, (opacity) => {
-  if (opacity !== undefined) {
-    // 设置 CSS 变量控制背景透明度
-    document.documentElement.style.setProperty('--window-opacity', opacity.toString())
-  }
-}, { immediate: true })
-
-// 监听主题色变化
-watch(() => settings.value.themeColor, (color) => {
-  if (color) {
-    applyThemeColor(color)
-  }
+// 主题链路集中在 themeService，确保配置导入、主题色和透明度更新走同一套 DOM 写入。
+watch(() => [
+  settings.value.theme,
+  settings.value.themePreset,
+  settings.value.themeColor,
+  settings.value.windowOpacity
+], () => {
+  applyThemeSettings(settings.value)
 }, { immediate: true })
 
 onMounted(async () => {
@@ -171,16 +146,6 @@ onMounted(async () => {
 
   // 初始化便签
   await notesStore.init()
-
-  // 应用初始设置
-  if (settings.value.themeColor) {
-    applyThemeColor(settings.value.themeColor)
-  }
-
-  // 设置初始窗口透明度 CSS 变量
-  if (settings.value.windowOpacity !== undefined) {
-    document.documentElement.style.setProperty('--window-opacity', settings.value.windowOpacity.toString())
-  }
 
   // 监听从右键菜单添加文件的事件
   unlisten = await listen<string>('add-file-from-context-menu', async (event) => {

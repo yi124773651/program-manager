@@ -81,6 +81,7 @@
 <script setup lang="ts">
 import { ref, onBeforeUnmount, onMounted, nextTick, watch } from 'vue'
 import { useNotesStore, NOTE_COLORS } from '@/stores/notesStore'
+import { useAppStore } from '@/stores/appStore'
 import { storeToRefs } from 'pinia'
 import { getCurrentWindow } from '@tauri-apps/api/window'
 import { listen, type UnlistenFn } from '@tauri-apps/api/event'
@@ -91,8 +92,10 @@ import {
   TrashIcon,
   StickyNoteIcon
 } from 'lucide-vue-next'
+import { applyThemeSettings } from '@/services/themeService'
 
 const notesStore = useNotesStore()
+const appStore = useAppStore()
 const { activeNoteId, activeNote, sortedNotes } = storeToRefs(notesStore)
 const { addNote, selectNote, updateNote, deleteNote, changeColor } = notesStore
 
@@ -151,6 +154,15 @@ watch(activeNote, async (note) => {
   }
 })
 
+watch(() => [
+  appStore.settings.theme,
+  appStore.settings.themePreset,
+  appStore.settings.themeColor,
+  appStore.settings.windowOpacity
+], () => {
+  applyThemeSettings(appStore.settings)
+}, { immediate: true })
+
 // ESC 关闭窗口
 const handleKeydown = (event: KeyboardEvent) => {
   if (event.key === 'Escape') {
@@ -160,6 +172,7 @@ const handleKeydown = (event: KeyboardEvent) => {
 
 // 初始化
 onMounted(async () => {
+  await appStore.init()
   // 初始化便签 store
   await notesStore.init()
 
@@ -196,22 +209,15 @@ onBeforeUnmount(() => {
 .notes-window {
   width: 100%;
   height: 100%;
-  background: rgba(255, 255, 255, 0.85);
-  backdrop-filter: blur(20px) saturate(180%);
-  -webkit-backdrop-filter: blur(20px) saturate(180%);
-  border: 1px solid rgba(255, 255, 255, 0.3);
+  background: var(--floating-window-bg);
+  backdrop-filter: var(--backdrop-blur);
+  -webkit-backdrop-filter: var(--backdrop-blur);
+  border: 1px solid var(--floating-window-border);
   border-radius: 16px;
   display: flex;
   flex-direction: column;
   overflow: hidden;
   box-shadow: var(--shadow-xl);
-}
-
-@media (prefers-color-scheme: dark) {
-  .notes-window {
-    background: rgba(30, 30, 30, 0.85);
-    border: 1px solid rgba(255, 255, 255, 0.1);
-  }
 }
 
 .notes-header {
