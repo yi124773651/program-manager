@@ -101,11 +101,11 @@ import CategoryList from '@/components/CategoryList.vue'
 import AppCard from '@/components/AppCard.vue'
 import { open as openFileDialog, message, ask } from '@tauri-apps/plugin-dialog'
 import { invoke } from '@tauri-apps/api/core'
-import { open as openUrl } from '@tauri-apps/plugin-shell'
 import { stat } from '@tauri-apps/plugin-fs'
 import { type UnlistenFn } from '@tauri-apps/api/event'
 import { getCurrentWindow } from '@tauri-apps/api/window'
 import Sortable from 'sortablejs'
+import { shellAdapter } from '@/adapters/shellAdapter'
 import {
   SUPPORTED_IMPORT_EXTENSIONS,
   detectItemTypeForImport,
@@ -404,7 +404,7 @@ const checkForUpdate = async () => {
 
     if (confirmed) {
       const url = info.downloadUrl || info.releaseUrl
-      if (url) await openUrl(url)
+      if (url) await shellAdapter.open(url)
     }
   } catch {
     // 静默失败，不影响正常使用

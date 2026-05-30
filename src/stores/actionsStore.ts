@@ -6,8 +6,11 @@ import {
   getActionTemplate,
   type ActionTemplate
 } from '@/types'
+import { persistenceService } from '@/services/persistenceService'
 
-const STORAGE_KEY = 'app_actions_config'
+interface ActionsStorage {
+  enabled?: string[]
+}
 
 export const useActionsStore = defineStore('actions', {
   state: () => ({
@@ -30,29 +33,31 @@ export const useActionsStore = defineStore('actions', {
   },
 
   actions: {
-    // 初始化 - 从 localStorage 加载配置
-    init() {
+    // 初始化 - 从统一 JSON 文件加载，旧 localStorage 仅作为兜底来源
+    async init() {
       if (this.initialized) return
 
-      try {
-        const saved = localStorage.getItem(STORAGE_KEY)
-        if (saved) {
-          const config = JSON.parse(saved)
-          this.enabledActions = config.enabled || DEFAULT_ENABLED_ACTIONS.enabled
-        }
-      } catch (error) {
-        console.error('加载动作配置失败:', error)
-      }
-
+      await this.loadFromStorage()
       this.initialized = true
     },
 
-    // 保存配置到 localStorage
-    saveConfig() {
+    async loadFromStorage() {
+      try {
+        const config = await persistenceService.load<ActionsStorage>('actions', {
+          enabled: DEFAULT_ENABLED_ACTIONS.enabled
+        })
+        this.enabledActions = config.enabled || DEFAULT_ENABLED_ACTIONS.enabled
+      } catch (error) {
+        console.error('加载动作配置失败:', error)
+      }
+    },
+
+    // 保存配置到统一 JSON 文件
+    async saveConfig() {
       const config = {
         enabled: this.enabledActions
       }
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(config))
+      await persistenceService.save('actions', config)
     },
 
     // 启用/禁用动作
@@ -63,7 +68,7 @@ export const useActionsStore = defineStore('actions', {
       } else {
         this.enabledActions.push(actionId)
       }
-      this.saveConfig()
+      void this.saveConfig()
     },
 
     // 执行动作
@@ -118,7 +123,7 @@ export const useActionsStore = defineStore('actions', {
     // 重置为默认配置
     resetToDefault() {
       this.enabledActions = [...DEFAULT_ENABLED_ACTIONS.enabled]
-      this.saveConfig()
+      void this.saveConfig()
     }
   }
 })

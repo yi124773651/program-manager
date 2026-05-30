@@ -35,11 +35,14 @@ import { onMounted, computed, onUnmounted, watch } from 'vue'
 import { useAppStore } from './stores/appStore'
 import { useSearchStore } from './stores/searchStore'
 import { useNotesStore } from './stores/notesStore'
+import { useClipboardStore } from './stores/clipboardStore'
 import { invoke } from '@tauri-apps/api/core'
 import MainView from './views/MainView.vue'
 import SpotlightSearch from './components/SpotlightSearch.vue'
 import QuickNotes from './components/QuickNotes.vue'
 import { listen } from '@tauri-apps/api/event'
+import { legacyMigrationService } from '@/services/legacyMigrationService'
+import { matchesKeyboardEvent } from '@/services/shortcutService'
 import {
   detectItemTypeFromPath,
   getItemDisplayNameFromPath
@@ -48,32 +51,67 @@ import {
 const appStore = useAppStore()
 const searchStore = useSearchStore()
 const notesStore = useNotesStore()
+const clipboardStore = useClipboardStore()
 const loading = computed(() => appStore.loading)
 const settings = computed(() => appStore.settings)
 
 let unlisten: (() => void) | null = null
+let quitUnlisten: (() => void) | null = null
+let mainCloseUnlisten: (() => void) | null = null
+let flushingBeforeQuit = false
+let hidingMainWindow = false
+
+const flushPendingStores = async () => {
+  await Promise.all([
+    appStore.flushPendingSave(),
+    notesStore.flushPendingSave(),
+    clipboardStore.flushPendingSave()
+  ])
+}
+
+const handleQuitRequested = async () => {
+  if (flushingBeforeQuit) return
+  flushingBeforeQuit = true
+
+  try {
+    await flushPendingStores()
+  } finally {
+    await invoke('quit_app')
+  }
+}
+
+const handleMainCloseRequested = async () => {
+  if (hidingMainWindow) return
+  hidingMainWindow = true
+
+  try {
+    await flushPendingStores()
+    await invoke('hide_main_window')
+  } finally {
+    hidingMainWindow = false
+  }
+}
 
 // 快捷键处理
 const handleKeydown = (event: KeyboardEvent) => {
   // 检查效率工具是否启用
   if (settings.value.quickerEnabled === false) return
 
-  // Ctrl+K 或 Cmd+K 打开搜索
-  if ((event.ctrlKey || event.metaKey) && event.key === 'k') {
+  if (matchesKeyboardEvent(event, settings.value.spotlightShortcut || 'Ctrl+K', { metaAsCtrl: true })) {
     // 检查快捷搜索是否启用
     if (settings.value.spotlightSearchEnabled === false) return
 
     event.preventDefault()
     searchStore.toggle()
+    return
   }
 
-  // Alt+N 打开便签
-  if (event.altKey && event.key === 'n') {
+  if (matchesKeyboardEvent(event, settings.value.quickNotesShortcut || 'Alt+N', { metaAsCtrl: true })) {
     // 检查快捷便签是否启用
     if (settings.value.quickNotesEnabled === false) return
 
     event.preventDefault()
-    notesStore.toggle()
+    void notesStore.toggle()
   }
 }
 
@@ -117,6 +155,13 @@ onMounted(async () => {
   // 注册快捷键
   document.addEventListener('keydown', handleKeydown)
 
+  try {
+    await legacyMigrationService.migrateIfNeeded()
+  } catch (error) {
+    // 迁移失败不能阻止启动；旧 localStorage 会保留，后续启动可重试。
+    console.error('旧本地数据迁移失败:', error)
+  }
+
   await appStore.init()
 
   // 如果背景来源为随机图床，启动时加载一次
@@ -125,7 +170,7 @@ onMounted(async () => {
   }
 
   // 初始化便签
-  notesStore.init()
+  await notesStore.init()
 
   // 应用初始设置
   if (settings.value.themeColor) {
@@ -218,6 +263,14 @@ onMounted(async () => {
       alert(`添加项目失败: ${error}`)
     }
   })
+
+  quitUnlisten = await listen('app-quit-requested', () => {
+    void handleQuitRequested()
+  })
+
+  mainCloseUnlisten = await listen('main-window-close-requested', () => {
+    void handleMainCloseRequested()
+  })
 })
 
 onUnmounted(() => {
@@ -227,6 +280,16 @@ onUnmounted(() => {
   if (unlisten) {
     unlisten()
   }
+
+  if (quitUnlisten) {
+    quitUnlisten()
+  }
+
+  if (mainCloseUnlisten) {
+    mainCloseUnlisten()
+  }
+
+  void flushPendingStores()
 })
 </script>
 

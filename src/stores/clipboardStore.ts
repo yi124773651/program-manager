@@ -1,8 +1,9 @@
 import { defineStore } from 'pinia'
-import { readText, writeText } from '@tauri-apps/plugin-clipboard-manager'
 import type { ClipboardItem } from '@/types'
 import { useAppStore } from './appStore'
 import { watch } from 'vue'
+import { clipboardAdapter } from '@/adapters/clipboardAdapter'
+import { persistenceService } from '@/services/persistenceService'
 
 // 剪贴板内容最大长度限制（10KB）
 const MAX_CONTENT_LENGTH = 10 * 1024
@@ -13,6 +14,11 @@ const SAVE_DEBOUNCE_DELAY = 1000
 // 轮询间隔（ms）- 从 500ms 优化到 1200ms
 const POLLING_INTERVAL = 1200
 
+interface ClipboardStorage {
+  items?: ClipboardItem[]
+  maxItems?: number
+}
+
 export const useClipboardStore = defineStore('clipboard', {
   state: () => ({
     items: [] as ClipboardItem[],
@@ -22,6 +28,7 @@ export const useClipboardStore = defineStore('clipboard', {
     pollingInterval: null as number | null,
     maxItems: 100,
     settingsWatcherSetup: false,
+    initialized: false,
     // 防抖保存相关
     saveTimeout: null as number | null,
     isDirty: false
@@ -57,17 +64,24 @@ export const useClipboardStore = defineStore('clipboard', {
 
   actions: {
     async init() {
-      // 从本地存储加载历史
-      this.loadFromStorage()
-      // 仅在功能启用时开始监控剪贴板
-      if (this.isEnabled) {
-        this.startMonitoring()
-      }
-
-      // 设置设置变化监听器（只设置一次）
       if (!this.settingsWatcherSetup) {
         this.settingsWatcherSetup = true
         this.setupSettingsWatcher()
+      }
+
+      if (this.initialized) {
+        if (this.isEnabled) {
+          this.startMonitoring()
+        }
+        return
+      }
+
+      // 从统一 JSON 文件加载历史，旧 localStorage 仅作为兜底来源
+      await this.loadFromStorage()
+      this.initialized = true
+      // 仅在功能启用时开始监控剪贴板
+      if (this.isEnabled) {
+        this.startMonitoring()
       }
     },
 
@@ -86,25 +100,22 @@ export const useClipboardStore = defineStore('clipboard', {
       )
     },
 
-    loadFromStorage() {
+    async loadFromStorage() {
       try {
-        const stored = localStorage.getItem('clipboard_history')
-        if (stored) {
-          const data = JSON.parse(stored)
-          this.items = data.items || []
-          this.maxItems = data.maxItems || 100
-        }
+        const data = await persistenceService.load<ClipboardStorage>('clipboard', {})
+        this.items = data.items || []
+        this.maxItems = data.maxItems || 100
       } catch (error) {
         console.error('加载剪贴板历史失败:', error)
       }
     },
 
-    saveToStorage() {
+    async saveToStorage() {
       try {
-        localStorage.setItem('clipboard_history', JSON.stringify({
+        await persistenceService.save('clipboard', {
           items: this.items,
           maxItems: this.maxItems
-        }))
+        })
         this.isDirty = false
       } catch (error) {
         console.error('保存剪贴板历史失败:', error)
@@ -118,18 +129,29 @@ export const useClipboardStore = defineStore('clipboard', {
         clearTimeout(this.saveTimeout)
       }
       this.saveTimeout = window.setTimeout(() => {
-        this.saveToStorage()
+        void this.saveToStorage()
         this.saveTimeout = null
       }, SAVE_DEBOUNCE_DELAY)
     },
 
     // 立即保存（用于重要操作如删除、清空）
-    saveNow() {
+    async saveNow() {
       if (this.saveTimeout) {
         clearTimeout(this.saveTimeout)
         this.saveTimeout = null
       }
-      this.saveToStorage()
+      await this.saveToStorage()
+    },
+
+    async flushPendingSave() {
+      if (this.saveTimeout) {
+        clearTimeout(this.saveTimeout)
+        this.saveTimeout = null
+      }
+
+      if (this.isDirty) {
+        await this.saveToStorage()
+      }
     },
 
     startMonitoring() {
@@ -140,7 +162,7 @@ export const useClipboardStore = defineStore('clipboard', {
         if (!this.isMonitoring) return
 
         try {
-          const content = await readText()
+          const content = await clipboardAdapter.readText()
           if (content && content !== this.lastContent && content.trim()) {
             this.lastContent = content
             await this.addItem(content)
@@ -158,7 +180,7 @@ export const useClipboardStore = defineStore('clipboard', {
       }
       // 停止监控时，如果有未保存的数据，立即保存
       if (this.isDirty) {
-        this.saveNow()
+        void this.saveNow()
       }
     },
 
@@ -220,13 +242,13 @@ export const useClipboardStore = defineStore('clipboard', {
 
     deleteItem(id: string) {
       this.items = this.items.filter(item => item.id !== id)
-      this.saveNow() // 删除操作立即保存
+      void this.saveNow() // 删除操作立即保存
     },
 
     clearHistory() {
       // 保留置顶项
       this.items = this.items.filter(item => item.pinned)
-      this.saveNow() // 清空操作立即保存
+      void this.saveNow() // 清空操作立即保存
     },
 
     togglePin(id: string) {
@@ -241,7 +263,7 @@ export const useClipboardStore = defineStore('clipboard', {
       const item = this.items.find(i => i.id === id)
       if (item) {
         try {
-          await writeText(item.content)
+          await clipboardAdapter.writeText(item.content)
           // 更新最后内容，避免重复添加
           this.lastContent = item.content
         } catch (error) {

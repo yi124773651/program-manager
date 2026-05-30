@@ -92,10 +92,7 @@ pub fn check_for_update(
 #[cfg(target_os = "windows")]
 pub fn get_version_from_registry(exe_path: &str) -> Option<String> {
     // 提取程序名称（不含扩展名）
-    let app_name = Path::new(exe_path)
-        .file_stem()?
-        .to_str()?
-        .to_string();
+    let app_name = Path::new(exe_path).file_stem()?.to_str()?.to_string();
 
     // 搜索常见的卸载注册表位置
     let hklm = RegKey::predef(HKEY_LOCAL_MACHINE);
@@ -121,12 +118,17 @@ pub fn get_version_from_registry(exe_path: &str) -> Option<String> {
     }
 
     // 尝试搜索所有卸载项（更全面但较慢）
-    if let Ok(uninstall_key) = hklm.open_subkey("SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall") {
+    if let Ok(uninstall_key) =
+        hklm.open_subkey("SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall")
+    {
         for subkey_name in uninstall_key.enum_keys().filter_map(|k| k.ok()) {
             if let Ok(subkey) = uninstall_key.open_subkey(&subkey_name) {
                 // 检查 DisplayName 是否匹配
                 if let Ok(display_name) = subkey.get_value::<String, _>("DisplayName") {
-                    if display_name.to_lowercase().contains(&app_name.to_lowercase()) {
+                    if display_name
+                        .to_lowercase()
+                        .contains(&app_name.to_lowercase())
+                    {
                         if let Ok(version) = subkey.get_value::<String, _>("DisplayVersion") {
                             return Some(version);
                         }
@@ -153,20 +155,10 @@ mod tests {
     #[test]
     fn test_confidence_levels() {
         // 仅修改时间变化 -> 低可信度
-        let result = check_for_update(
-            "test.exe",
-            None,
-            Some(1000),
-            Some(1000),
-        );
+        let _result = check_for_update("test.exe", None, Some(1000), Some(1000));
 
         // 大小和时间都变化 -> 中等可信度
-        let result2 = check_for_update(
-            "test.exe",
-            None,
-            Some(1000),
-            Some(1000),
-        );
+        let _result2 = check_for_update("test.exe", None, Some(1000), Some(1000));
 
         // 实际测试需要真实文件，这里仅作示意
     }

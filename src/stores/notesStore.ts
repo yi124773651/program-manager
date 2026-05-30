@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia'
 import { useAppStore } from './appStore'
+import { persistenceService } from '@/services/persistenceService'
 
 export interface QuickNote {
   id: string
@@ -8,6 +9,12 @@ export interface QuickNote {
   updatedAt: number
   color: string
 }
+
+interface NotesStorage {
+  notes: QuickNote[]
+}
+
+const SAVE_DEBOUNCE_DELAY = 800
 
 const NOTE_COLORS = [
   '#fff9c4', // 黄色
@@ -23,7 +30,10 @@ export const useNotesStore = defineStore('notes', {
     notes: [] as QuickNote[],
     isOpen: false,
     activeNoteId: null as string | null,
-    currentColorIndex: 0
+    currentColorIndex: 0,
+    initialized: false,
+    saveTimeout: null as ReturnType<typeof setTimeout> | null,
+    isDirty: false
   }),
 
   getters: {
@@ -45,29 +55,52 @@ export const useNotesStore = defineStore('notes', {
       return settings.quickerEnabled !== false && settings.quickNotesEnabled !== false
     },
 
-    init() {
-      this.loadFromStorage()
+    async init() {
+      if (this.initialized) return
+      await this.loadFromStorage()
+      this.initialized = true
     },
 
-    loadFromStorage() {
+    async loadFromStorage() {
       try {
-        const stored = localStorage.getItem('quick_notes')
-        if (stored) {
-          const data = JSON.parse(stored)
-          this.notes = data.notes || []
-        }
+        const data = await persistenceService.load<NotesStorage>('notes', { notes: [] })
+        this.notes = data.notes || []
       } catch (error) {
         console.error('加载便签失败:', error)
       }
     },
 
-    saveToStorage() {
+    async saveToStorage() {
       try {
-        localStorage.setItem('quick_notes', JSON.stringify({
+        await persistenceService.save('notes', {
           notes: this.notes
-        }))
+        })
+        this.isDirty = false
       } catch (error) {
         console.error('保存便签失败:', error)
+      }
+    },
+
+    debouncedSave() {
+      this.isDirty = true
+      if (this.saveTimeout) {
+        clearTimeout(this.saveTimeout)
+      }
+
+      this.saveTimeout = setTimeout(() => {
+        this.saveTimeout = null
+        void this.saveToStorage()
+      }, SAVE_DEBOUNCE_DELAY)
+    },
+
+    async flushPendingSave() {
+      if (this.saveTimeout) {
+        clearTimeout(this.saveTimeout)
+        this.saveTimeout = null
+      }
+
+      if (this.isDirty) {
+        await this.saveToStorage()
       }
     },
 
@@ -84,13 +117,14 @@ export const useNotesStore = defineStore('notes', {
       }
     },
 
-    close() {
+    async close() {
       this.isOpen = false
+      await this.flushPendingSave()
     },
 
-    toggle() {
+    async toggle() {
       if (this.isOpen) {
-        this.close()
+        await this.close()
       } else {
         this.open()
       }
@@ -107,7 +141,7 @@ export const useNotesStore = defineStore('notes', {
       this.currentColorIndex++
       this.notes.unshift(note)
       this.activeNoteId = note.id
-      this.saveToStorage()
+      void this.saveToStorage()
     },
 
     updateNote(id: string, content: string) {
@@ -115,7 +149,7 @@ export const useNotesStore = defineStore('notes', {
       if (note) {
         note.content = content
         note.updatedAt = Date.now()
-        this.saveToStorage()
+        this.debouncedSave()
       }
     },
 
@@ -127,7 +161,7 @@ export const useNotesStore = defineStore('notes', {
         if (this.activeNoteId === id) {
           this.activeNoteId = this.notes[0]?.id || null
         }
-        this.saveToStorage()
+        void this.saveToStorage()
       }
     },
 
@@ -139,7 +173,7 @@ export const useNotesStore = defineStore('notes', {
       const note = this.notes.find(n => n.id === id)
       if (note) {
         note.color = color
-        this.saveToStorage()
+        void this.saveToStorage()
       }
     }
   }

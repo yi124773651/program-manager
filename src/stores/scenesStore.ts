@@ -1,10 +1,10 @@
 import { defineStore } from 'pinia'
 import { invoke } from '@tauri-apps/api/core'
 import { useAppStore } from './appStore'
-import type { Scene, SceneAction } from '@/types'
+import type { Scene, SceneAction, SceneActionExecutionLog, SceneFailureStrategy } from '@/types'
 import { canUseProcessActions } from '@/types'
-
-const STORAGE_KEY = 'app_scenes_config'
+import { getSceneActionName } from '@/services/sceneActionRegistry'
+import { sceneService } from '@/services/sceneService'
 
 export const useScenesStore = defineStore('scenes', {
   state: () => ({
@@ -12,7 +12,11 @@ export const useScenesStore = defineStore('scenes', {
     initialized: false,
     executing: false,
     currentExecutingScene: null as string | null,
-    executionProgress: 0
+    latestExecutionScene: null as string | null,
+    currentExecutingAction: null as string | null,
+    executionProgress: 0,
+    executionLogs: [] as SceneActionExecutionLog[],
+    cancelRequested: false
   }),
 
   getters: {
@@ -24,45 +28,40 @@ export const useScenesStore = defineStore('scenes', {
     // 根据 ID 获取场景
     getSceneById(): (id: string) => Scene | undefined {
       return (id: string) => this.scenes.find(s => s.id === id)
+    },
+
+    latestExecutionLogs(): SceneActionExecutionLog[] {
+      return this.executionLogs
     }
   },
 
   actions: {
-    // 初始化 - 从 localStorage 加载配置
-    init() {
+    // 初始化 - 从统一 JSON 文件加载，旧 localStorage 仅作为兜底来源
+    async init() {
       if (this.initialized) return
 
-      try {
-        const saved = localStorage.getItem(STORAGE_KEY)
-        if (saved) {
-          const config = JSON.parse(saved)
-          this.scenes = config.scenes || []
-        }
-      } catch (error) {
-        console.error('加载场景配置失败:', error)
-      }
-
+      await this.loadFromStorage()
       this.initialized = true
     },
 
-    // 保存配置到 localStorage
-    saveConfig() {
-      const config = {
-        scenes: this.scenes
+    async loadFromStorage() {
+      try {
+        this.scenes = await sceneService.loadScenes()
+      } catch (error) {
+        console.error('加载场景配置失败:', error)
       }
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(config))
+    },
+
+    // 保存配置到统一 JSON 文件
+    async saveConfig() {
+      await sceneService.saveScenes(this.scenes)
     },
 
     // 添加场景
     addScene(scene: Omit<Scene, 'id' | 'createdAt' | 'updatedAt'>) {
-      const newScene: Scene = {
-        ...scene,
-        id: `scene_${Date.now()}`,
-        createdAt: Date.now(),
-        updatedAt: Date.now()
-      }
+      const newScene = sceneService.createScene(scene)
       this.scenes.push(newScene)
-      this.saveConfig()
+      void this.saveConfig()
       return newScene
     },
 
@@ -75,7 +74,7 @@ export const useScenesStore = defineStore('scenes', {
           ...updates,
           updatedAt: Date.now()
         }
-        this.saveConfig()
+        void this.saveConfig()
         return this.scenes[index]
       }
       return null
@@ -86,10 +85,34 @@ export const useScenesStore = defineStore('scenes', {
       const index = this.scenes.findIndex(s => s.id === id)
       if (index >= 0) {
         this.scenes.splice(index, 1)
-        this.saveConfig()
+        void this.saveConfig()
         return true
       }
       return false
+    },
+
+    duplicateScene(sceneId: string) {
+      const source = this.scenes.find(s => s.id === sceneId)
+      if (!source) return null
+
+      const duplicated = sceneService.duplicateScene(source)
+
+      this.scenes.push(duplicated)
+      void this.saveConfig()
+      return duplicated
+    },
+
+    exportSceneJson(sceneId: string) {
+      const scene = this.scenes.find(s => s.id === sceneId)
+      if (!scene) return null
+      return sceneService.exportSceneJson(scene)
+    },
+
+    importSceneJson(rawJson: string) {
+      const imported = sceneService.importSceneJson(rawJson)
+      this.scenes.push(imported)
+      void this.saveConfig()
+      return imported
     },
 
     // 从应用路径提取进程名
@@ -154,7 +177,7 @@ if ($process) {
     },
 
     // 执行单个动作
-    async executeAction(action: SceneAction): Promise<{ success: boolean; error?: string; skipped?: boolean }> {
+    async executeAction(action: SceneAction): Promise<{ success: boolean; error?: string; skipped?: boolean; cancelled?: boolean }> {
       const appStore = useAppStore()
 
       try {
@@ -292,7 +315,10 @@ if ($ps) { $ps | Stop-Process -Force }`,
 
           case 'delay': {
             const seconds = action.params.seconds || 1
-            await new Promise(resolve => setTimeout(resolve, seconds * 1000))
+            const completed = await this.waitForDelay(seconds)
+            if (!completed) {
+              return { success: false, cancelled: true, error: '用户取消执行' }
+            }
             return { success: true }
           }
 
@@ -336,11 +362,36 @@ $toast = [Windows.UI.Notifications.ToastNotification]::new($xml)
       }
     },
 
+    async waitForDelay(seconds: number) {
+      const endAt = Date.now() + seconds * 1000
+      while (Date.now() < endAt) {
+        if (this.cancelRequested) return false
+        await new Promise(resolve => setTimeout(resolve, 100))
+      }
+      return true
+    },
+
+    cancelExecution() {
+      if (!this.executing) return
+      this.cancelRequested = true
+    },
+
+    updateExecutionLog(actionId: string, patch: Partial<SceneActionExecutionLog>) {
+      const index = this.executionLogs.findIndex(log => log.actionId === actionId)
+      if (index >= 0) {
+        this.executionLogs[index] = {
+          ...this.executionLogs[index],
+          ...patch
+        }
+      }
+    },
+
     // 执行场景（顺序执行所有动作）
     async executeScene(sceneId: string): Promise<{
       success: boolean
       completedActions: number
       totalActions: number
+      cancelled?: boolean
       error?: string
     }> {
       const scene = this.scenes.find(s => s.id === sceneId)
@@ -349,26 +400,108 @@ $toast = [Windows.UI.Notifications.ToastNotification]::new($xml)
       }
 
       if (scene.actions.length === 0) {
+        this.latestExecutionScene = sceneId
+        this.executionLogs = []
         return { success: true, completedActions: 0, totalActions: 0 }
       }
 
       this.executing = true
       this.currentExecutingScene = sceneId
+      this.latestExecutionScene = sceneId
+      this.currentExecutingAction = null
       this.executionProgress = 0
+      this.cancelRequested = false
+      this.executionLogs = scene.actions.map((action) => ({
+        actionId: action.id,
+        actionType: action.type,
+        status: 'pending'
+      }))
 
       let completedActions = 0
       const totalActions = scene.actions.length
+      const failureStrategy: SceneFailureStrategy = scene.failureStrategy || 'continue'
 
       try {
         for (let i = 0; i < scene.actions.length; i++) {
-          const action = scene.actions[i]
-          const result = await this.executeAction(action)
+          if (this.cancelRequested) {
+            for (const actionToCancel of scene.actions.slice(i)) {
+              this.updateExecutionLog(actionToCancel.id, {
+                status: 'cancelled',
+                message: '执行已取消'
+              })
+            }
+            return {
+              success: false,
+              completedActions,
+              totalActions,
+              cancelled: true,
+              error: '用户取消执行'
+            }
+          }
 
-          if (!result.success) {
-            // 动作执行失败，继续执行下一个（不中断）
+          const action = scene.actions[i]
+          const startedAt = Date.now()
+          this.currentExecutingAction = action.id
+          this.updateExecutionLog(action.id, {
+            status: 'running',
+            startedAt,
+            message: `正在执行：${getSceneActionName(action.type)}`
+          })
+
+          const result = await this.executeAction(action)
+          const endedAt = Date.now()
+
+          if (result.cancelled) {
+            this.updateExecutionLog(action.id, {
+              status: 'cancelled',
+              endedAt,
+              duration: endedAt - startedAt,
+              error: result.error || '用户取消执行'
+            })
+            for (const actionToCancel of scene.actions.slice(i + 1)) {
+              this.updateExecutionLog(actionToCancel.id, {
+                status: 'cancelled',
+                message: '执行已取消'
+              })
+            }
+            return {
+              success: false,
+              completedActions,
+              totalActions,
+              cancelled: true,
+              error: result.error || '用户取消执行'
+            }
+          } else if (!result.success) {
             console.warn(`动作执行失败: ${result.error}`)
+            this.updateExecutionLog(action.id, {
+              status: 'failed',
+              endedAt,
+              duration: endedAt - startedAt,
+              error: result.error || '动作执行失败'
+            })
+
+            if (failureStrategy === 'stop') {
+              for (const actionToCancel of scene.actions.slice(i + 1)) {
+                this.updateExecutionLog(actionToCancel.id, {
+                  status: 'cancelled',
+                  message: '因失败策略中断'
+                })
+              }
+              return {
+                success: false,
+                completedActions,
+                totalActions,
+                error: result.error || '动作执行失败'
+              }
+            }
           } else {
             completedActions++
+            this.updateExecutionLog(action.id, {
+              status: result.skipped ? 'skipped' : 'success',
+              endedAt,
+              duration: endedAt - startedAt,
+              message: result.skipped ? '已跳过：目标已满足' : '执行成功'
+            })
           }
 
           // 更新进度
@@ -390,7 +523,9 @@ $toast = [Windows.UI.Notifications.ToastNotification]::new($xml)
       } finally {
         this.executing = false
         this.currentExecutingScene = null
+        this.currentExecutingAction = null
         this.executionProgress = 0
+        this.cancelRequested = false
       }
     },
 
@@ -402,7 +537,7 @@ $toast = [Windows.UI.Notifications.ToastNotification]::new($xml)
       const [removed] = scene.actions.splice(fromIndex, 1)
       scene.actions.splice(toIndex, 0, removed)
       scene.updatedAt = Date.now()
-      this.saveConfig()
+      void this.saveConfig()
     },
 
     // 添加动作到场景
@@ -412,11 +547,11 @@ $toast = [Windows.UI.Notifications.ToastNotification]::new($xml)
 
       const newAction: SceneAction = {
         ...action,
-        id: `action_${Date.now()}`
+        id: sceneService.createActionId()
       }
       scene.actions.push(newAction)
       scene.updatedAt = Date.now()
-      this.saveConfig()
+      void this.saveConfig()
       return newAction
     },
 
@@ -429,7 +564,7 @@ $toast = [Windows.UI.Notifications.ToastNotification]::new($xml)
       if (index >= 0) {
         scene.actions.splice(index, 1)
         scene.updatedAt = Date.now()
-        this.saveConfig()
+        void this.saveConfig()
         return true
       }
       return false
@@ -444,7 +579,7 @@ $toast = [Windows.UI.Notifications.ToastNotification]::new($xml)
       if (action) {
         Object.assign(action, updates)
         scene.updatedAt = Date.now()
-        this.saveConfig()
+        void this.saveConfig()
         return action
       }
       return null

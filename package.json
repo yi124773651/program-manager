@@ -1,6 +1,6 @@
 {
   "name": "program-manager",
-  "version": "1.1.0",
+  "version": "1.1.4",
   "description": "程序管理器 - 基于 Tauri + Vue 3",
   "type": "module",
   "scripts": {
@@ -8,7 +8,8 @@
     "build": "vue-tsc --noEmit && vite build",
     "preview": "vite preview",
     "tauri": "tauri",
-    "test": "vitest run"
+    "test": "vitest run",
+    "check:versions": "node scripts/check-versions.mjs"
   },
   "devDependencies": {
     "@tauri-apps/api": "^2.9.0",

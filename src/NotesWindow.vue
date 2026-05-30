@@ -79,10 +79,11 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, nextTick, watch } from 'vue'
+import { ref, onBeforeUnmount, onMounted, nextTick, watch } from 'vue'
 import { useNotesStore, NOTE_COLORS } from '@/stores/notesStore'
 import { storeToRefs } from 'pinia'
 import { getCurrentWindow } from '@tauri-apps/api/window'
+import { listen, type UnlistenFn } from '@tauri-apps/api/event'
 import { ask } from '@tauri-apps/plugin-dialog'
 import {
   PlusIcon,
@@ -97,6 +98,7 @@ const { addNote, selectNote, updateNote, deleteNote, changeColor } = notesStore
 
 const textareaRef = ref<HTMLTextAreaElement | null>(null)
 const noteColors = NOTE_COLORS
+let selectNoteUnlisten: UnlistenFn | null = null
 
 const handleInput = (event: Event) => {
   const target = event.target as HTMLTextAreaElement
@@ -130,6 +132,7 @@ const formatTime = (timestamp: number) => {
 }
 
 const closeWindow = async () => {
+  await notesStore.flushPendingSave()
   const win = getCurrentWindow()
   await win.close()
 }
@@ -158,7 +161,7 @@ const handleKeydown = (event: KeyboardEvent) => {
 // 初始化
 onMounted(async () => {
   // 初始化便签 store
-  notesStore.init()
+  await notesStore.init()
 
   // 如果没有便签，创建一个
   if (sortedNotes.value.length === 0) {
@@ -171,6 +174,21 @@ onMounted(async () => {
 
   // 监听 ESC 键
   document.addEventListener('keydown', handleKeydown)
+
+  selectNoteUnlisten = await listen<{ noteId: string }>('select-note', async (event) => {
+    const note = notesStore.notes.find((item) => item.id === event.payload.noteId)
+    if (!note) return
+
+    selectNote(note.id)
+    await nextTick()
+    textareaRef.value?.focus()
+  })
+})
+
+onBeforeUnmount(() => {
+  document.removeEventListener('keydown', handleKeydown)
+  selectNoteUnlisten?.()
+  void notesStore.flushPendingSave()
 })
 </script>
 

@@ -1,13 +1,14 @@
-name: Build
+name: CI
 
 on:
   push:
-    branches-ignore: [main]
+    branches: ["**"]
+    tags-ignore: ["**"]
   pull_request:
     branches: [main]
 
 jobs:
-  build:
+  verify:
     runs-on: windows-latest
 
     steps:
@@ -21,6 +22,8 @@ jobs:
 
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
 
       - name: Cache Rust dependencies
         uses: Swatinem/rust-cache@v2
@@ -30,10 +33,23 @@ jobs:
       - name: Install frontend dependencies
         run: npm ci
 
-      - name: Type check frontend
-        run: npx vue-tsc --noEmit
+      - name: Check version consistency
+        run: npm run check:versions
 
-      - name: Build Tauri app
-        uses: tauri-apps/tauri-action@v0
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Test frontend
+        run: npm run test
+
+      - name: Build frontend
+        run: npm run build
+
+      - name: Check Rust format
+        run: cargo fmt --check
+        working-directory: src-tauri
+
+      - name: Test Rust
+        run: cargo test
+        working-directory: src-tauri
+
+      - name: Check Rust
+        run: cargo check
+        working-directory: src-tauri

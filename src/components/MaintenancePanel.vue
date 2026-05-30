@@ -54,6 +54,9 @@
               <div class="progress-fill" :style="{ width: maintenanceStore.validationProgress + '%' }"></div>
               <span class="progress-text">{{ maintenanceStore.validationProgress }}%</span>
             </div>
+            <div v-if="maintenanceStore.validating && maintenanceStore.progressMessage" class="progress-message">
+              {{ maintenanceStore.progressMessage }}
+            </div>
 
             <!-- 检测结果 -->
             <div v-if="maintenanceStore.validationResults.length > 0" class="results">
@@ -134,6 +137,9 @@
                   :style="{ width: (maintenanceStore.batchProgress / maintenanceStore.batchTotal * 100) + '%' }"
                 ></div>
               </div>
+              <div v-if="maintenanceStore.progressMessage" class="progress-message">
+                {{ maintenanceStore.progressMessage }}
+              </div>
             </div>
 
             <!-- 检测更新 -->
@@ -156,6 +162,9 @@
               <div class="progress-fill" :style="{ width: maintenanceStore.updateCheckProgress + '%' }"></div>
               <span class="progress-text">{{ maintenanceStore.updateCheckProgress }}%</span>
             </div>
+            <div v-if="maintenanceStore.checkingUpdates && maintenanceStore.progressMessage" class="progress-message">
+              {{ maintenanceStore.progressMessage }}
+            </div>
 
             <!-- 更新检测结果 -->
             <div v-if="maintenanceStore.updateResults.length > 0" class="results">
@@ -164,6 +173,16 @@
                 <div class="results-summary">
                   发现 <strong>{{ maintenanceStore.updateCount }}</strong> 个可能的更新
                 </div>
+              </div>
+
+              <div v-if="maintenanceStore.updateCount > 0" class="action-buttons results-actions">
+                <button
+                  class="btn-secondary"
+                  :disabled="maintenanceStore.batchOperating"
+                  @click="handleAcceptAllBaselines"
+                >
+                  接受全部疑似更新为新基准
+                </button>
               </div>
 
               <div v-if="maintenanceStore.updateCount > 0" class="results-list">
@@ -197,6 +216,13 @@
                   <div class="result-badge" :class="'badge-' + result.confidence">
                     {{ confidenceLabel(result.confidence) }}
                   </div>
+                  <button
+                    class="inline-action-btn"
+                    :disabled="maintenanceStore.batchOperating"
+                    @click="handleAcceptBaseline(result.appId)"
+                  >
+                    接受为基准
+                  </button>
                 </div>
               </div>
 
@@ -212,6 +238,13 @@
         <transition name="fade">
           <span v-if="statusMessage" class="status-message" :class="statusType">{{ statusMessage }}</span>
         </transition>
+        <button
+          class="btn-secondary"
+          :disabled="!canExportLog"
+          @click="handleExportLog"
+        >
+          导出日志
+        </button>
         <button class="btn-secondary" @click="$emit('close')">关闭</button>
       </div>
     </div>
@@ -221,6 +254,8 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
 import { XIcon, AlertCircleIcon } from 'lucide-vue-next'
+import { ask, save } from '@tauri-apps/plugin-dialog'
+import { writeTextFile } from '@tauri-apps/plugin-fs'
 import { useMaintenanceStore } from '@/stores/maintenanceStore'
 import { useAppStore } from '@/stores/appStore'
 import { canCheckForUpdates } from '@/types'
@@ -237,6 +272,9 @@ const statusType = ref<'success' | 'error'>('success')
 const totalItems = computed(() => Object.keys(appStore.config.apps).length)
 const executableItemCount = computed(() => {
   return Object.values(appStore.config.apps).filter(app => canCheckForUpdates(app.itemType)).length
+})
+const canExportLog = computed(() => {
+  return maintenanceStore.validationResults.length > 0 || maintenanceStore.updateResults.length > 0 || maintenanceStore.maintenanceLogs.length > 0
 })
 
 const confidenceLabel = (confidence: string) => {
@@ -267,7 +305,18 @@ const showStatus = (msg: string, type: 'success' | 'error' = 'success') => {
 }
 
 const handleBatchDelete = async () => {
-  if (!confirm(`确定要删除 ${maintenanceStore.invalidAppCount} 个失效项目吗？此操作不可撤销。`)) {
+  const itemList = maintenanceStore.invalidApps
+    .map((item, index) => `${index + 1}. ${item.appName} - ${item.reason || '文件不存在'}`)
+    .join('\n')
+
+  const confirmed = await ask(`将删除以下 ${maintenanceStore.invalidAppCount} 个失效项目：\n\n${itemList}`, {
+    title: '确认批量删除',
+    kind: 'warning',
+    okLabel: '确认删除',
+    cancelLabel: '取消'
+  })
+
+  if (!confirmed) {
     return
   }
 
@@ -282,9 +331,9 @@ const handleBatchDelete = async () => {
 const handleInitBaselines = async () => {
   try {
     const result = await maintenanceStore.initAllUpdateBaselines()
-    alert(`初始化完成！成功: ${result.succeeded}，失败: ${result.failed}`)
+    showStatus(`初始化完成，成功 ${result.succeeded} 个，失败 ${result.failed} 个`)
   } catch (error) {
-    alert(`初始化失败: ${error}`)
+    showStatus(`初始化失败: ${error}`, 'error')
   }
 }
 
@@ -293,6 +342,51 @@ const handleCheckUpdates = async () => {
     await maintenanceStore.checkAllUpdates()
   } catch (error) {
     alert(`检测失败: ${error}`)
+  }
+}
+
+const handleAcceptBaseline = async (appId: string) => {
+  try {
+    const result = await maintenanceStore.acceptCurrentBaseline([appId])
+    showStatus(`已接受 ${result.succeeded} 个项目为新基准`)
+  } catch (error) {
+    showStatus(`接受基准失败: ${error}`, 'error')
+  }
+}
+
+const handleAcceptAllBaselines = async () => {
+  const targetIds = maintenanceStore.appsWithUpdates.map(result => result.appId)
+  if (targetIds.length === 0) return
+
+  const confirmed = await ask(`将把 ${targetIds.length} 个疑似更新项目的当前文件状态设为新基准。`, {
+    title: '接受当前状态',
+    kind: 'warning',
+    okLabel: '接受',
+    cancelLabel: '取消'
+  })
+  if (!confirmed) return
+
+  try {
+    const result = await maintenanceStore.acceptCurrentBaseline(targetIds)
+    showStatus(`已接受 ${result.succeeded} 个项目为新基准，失败 ${result.failed} 个`)
+  } catch (error) {
+    showStatus(`接受基准失败: ${error}`, 'error')
+  }
+}
+
+const handleExportLog = async () => {
+  try {
+    const targetPath = await save({
+      title: '导出维护日志',
+      defaultPath: `program-manager-maintenance-${new Date().toISOString().slice(0, 10)}.txt`,
+      filters: [{ name: '文本文件', extensions: ['txt'] }]
+    })
+    if (!targetPath) return
+
+    await writeTextFile(targetPath, maintenanceStore.buildMaintenanceLogText())
+    showStatus('维护日志已导出')
+  } catch (error) {
+    showStatus(`导出日志失败: ${error}`, 'error')
   }
 }
 </script>
@@ -479,6 +573,15 @@ const handleCheckUpdates = async () => {
   margin-bottom: 8px;
 }
 
+.progress-message {
+  margin-top: 8px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .progress-bar {
   position: relative;
   height: 8px;
@@ -536,6 +639,10 @@ const handleCheckUpdates = async () => {
   flex-direction: column;
   gap: 8px;
   margin-bottom: 16px;
+}
+
+.results-actions {
+  margin-bottom: 12px;
 }
 
 .result-item {
@@ -596,6 +703,21 @@ const handleCheckUpdates = async () => {
 .result-badge.badge-low {
   background: rgba(142, 142, 147, 0.1);
   color: #8e8e93;
+}
+
+.inline-action-btn {
+  padding: 7px 10px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--primary-color);
+  background: rgba(0, 122, 255, 0.1);
+  flex-shrink: 0;
+  transition: all 0.2s;
+}
+
+.inline-action-btn:hover:not(:disabled) {
+  background: rgba(0, 122, 255, 0.16);
 }
 
 .no-issues {

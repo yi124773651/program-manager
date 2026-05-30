@@ -166,8 +166,8 @@ const formatTime = (timestamp: number) => {
   return date.toLocaleDateString()
 }
 
-onMounted(() => {
-  clipboardStore.init()
+onMounted(async () => {
+  await clipboardStore.init()
 })
 
 onUnmounted(() => {

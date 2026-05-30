@@ -3,13 +3,16 @@
 
 mod commands;
 mod models;
+mod storage;
 mod utils;
 
 use commands::*;
 use models::AppState;
 use std::sync::Mutex;
-use tauri::{Manager, Emitter, WebviewUrl, WebviewWindowBuilder, menu::{MenuBuilder, MenuItemBuilder}};
-use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut, ShortcutState};
+use tauri::{
+    menu::{MenuBuilder, MenuItemBuilder},
+    Emitter, Manager,
+};
 
 fn main() {
     // 加载或创建配置
@@ -79,8 +82,20 @@ fn main() {
             batch_delete_apps,
             // 图床图片获取命令
             fetch_image_as_base64,
+            hide_main_window,
             hide_todo_window,
+            quit_app,
+            show_notes_window,
+            show_todo_window,
             check_app_version_update,
+            get_legacy_data_status,
+            migrate_legacy_local_storage,
+            get_migration_status,
+            read_persisted_data,
+            write_persisted_data,
+            export_local_data,
+            preview_local_data_import,
+            import_local_data,
         ])
         .setup(|app| {
             // 处理启动时的命令行参数
@@ -115,20 +130,17 @@ fn main() {
             tray.set_menu(Some(menu))?;
 
             // 处理托盘事件
-            tray.on_menu_event(|app, event| {
-                match event.id().as_ref() {
-                    "show" => {
-                        if let Some(window) = app.get_webview_window("main") {
-                            let _ = window.show();
-                            let _ = window.set_focus();
-                        }
+            tray.on_menu_event(|app, event| match event.id().as_ref() {
+                "show" => {
+                    if let Some(window) = app.get_webview_window("main") {
+                        let _ = window.show();
+                        let _ = window.set_focus();
                     }
-                    "quit" => {
-                        // 强制退出应用
-                        std::process::exit(0);
-                    }
-                    _ => {}
                 }
+                "quit" => {
+                    let _ = app.emit("app-quit-requested", ());
+                }
+                _ => {}
             });
 
             // 处理托盘图标点击事件（左键点击显示窗口）
@@ -155,180 +167,19 @@ fn main() {
                 let window_clone = window.clone();
                 window.on_window_event(move |event| {
                     if let tauri::WindowEvent::CloseRequested { api, .. } = event {
-                        // 阻止默认关闭行为
                         api.prevent_close();
-                        // 隐藏窗口到托盘
-                        let _ = window_clone.hide();
+                        let _ = window_clone.emit("main-window-close-requested", ());
                     }
                 });
             }
 
-            // 注册全局快捷键 Alt+Space 切换窗口显示/隐藏
-            let shortcut = "Alt+Space".parse::<Shortcut>().unwrap();
-            let app_handle_main = app.handle().clone();
-            app.global_shortcut().on_shortcut(shortcut, move |app, _shortcut, event| {
-                if event.state == ShortcutState::Pressed {
-                    // 检查设置是否启用
-                    let config = app_handle_main.state::<AppState>();
-                    let config_guard = config.config.lock().unwrap();
-                    let quicker_enabled = config_guard.settings.quicker_enabled.unwrap_or(true);
-                    let global_shortcut_enabled = config_guard.settings.global_shortcut_enabled.unwrap_or(true);
-                    drop(config_guard); // 释放锁
-
-                    if !quicker_enabled || !global_shortcut_enabled {
-                        return; // 功能被禁用
-                    }
-
-                    if let Some(window) = app.get_webview_window("main") {
-                        let is_visible = window.is_visible().unwrap_or(false);
-                        let is_minimized = window.is_minimized().unwrap_or(false);
-
-                        // 如果窗口可见且没有最小化，则隐藏
-                        if is_visible && !is_minimized {
-                            let _ = window.hide();
-                        } else {
-                            // 否则显示窗口（包括从最小化恢复）
-                            let _ = window.show();
-                            let _ = window.unminimize();
-                            let _ = window.set_focus();
-                        }
-                    }
-                }
-            })?;
-
-            // 注册全局快捷键 Ctrl+K 打开快捷搜索
-            let search_shortcut = "Control+K".parse::<Shortcut>().unwrap();
-            let app_handle_search = app.handle().clone();
-            app.global_shortcut().on_shortcut(search_shortcut, move |app, _shortcut, event| {
-                if event.state == ShortcutState::Pressed {
-                    // 检查设置是否启用
-                    let config = app_handle_search.state::<AppState>();
-                    let config_guard = config.config.lock().unwrap();
-                    let quicker_enabled = config_guard.settings.quicker_enabled.unwrap_or(true);
-                    let spotlight_enabled = config_guard.settings.spotlight_search_enabled.unwrap_or(true);
-                    drop(config_guard); // 释放锁
-
-                    if !quicker_enabled || !spotlight_enabled {
-                        return; // 功能被禁用，不打开窗口
-                    }
-
-                    // 检查搜索窗口是否已存在
-                    if let Some(window) = app.get_webview_window("search") {
-                        // 窗口已存在，聚焦它
-                        let _ = window.show();
-                        let _ = window.set_focus();
-                    } else {
-                        // 创建新的搜索窗口
-                        let url = if cfg!(debug_assertions) {
-                            WebviewUrl::External("http://localhost:1420/search.html".parse().unwrap())
-                        } else {
-                            WebviewUrl::App("search.html".into())
-                        };
-
-                        let _ = WebviewWindowBuilder::new(app, "search", url)
-                            .title("快捷搜索")
-                            .inner_size(600.0, 68.0)  // 初始只显示搜索框高度
-                            .max_inner_size(600.0, 500.0)
-                            .resizable(false)
-                            .decorations(false)
-                            .transparent(true)
-                            .always_on_top(true)
-                            .center()
-                            .skip_taskbar(true)
-                            .build();
-                    }
-                }
-            })?;
-
-            // 注册全局快捷键 Alt+N 打开快捷便签
-            let notes_shortcut = "Alt+N".parse::<Shortcut>().unwrap();
-            let app_handle_notes = app.handle().clone();
-            app.global_shortcut().on_shortcut(notes_shortcut, move |app, _shortcut, event| {
-                if event.state == ShortcutState::Pressed {
-                    // 检查设置是否启用
-                    let config = app_handle_notes.state::<AppState>();
-                    let config_guard = config.config.lock().unwrap();
-                    let quicker_enabled = config_guard.settings.quicker_enabled.unwrap_or(true);
-                    let notes_enabled = config_guard.settings.quick_notes_enabled.unwrap_or(true);
-                    drop(config_guard); // 释放锁
-
-                    if !quicker_enabled || !notes_enabled {
-                        return; // 功能被禁用，不打开窗口
-                    }
-
-                    // 检查便签窗口是否已存在
-                    if let Some(window) = app.get_webview_window("notes") {
-                        // 窗口已存在，聚焦它
-                        let _ = window.show();
-                        let _ = window.set_focus();
-                    } else {
-                        // 创建新的便签窗口
-                        let url = if cfg!(debug_assertions) {
-                            WebviewUrl::External("http://localhost:1420/notes.html".parse().unwrap())
-                        } else {
-                            WebviewUrl::App("notes.html".into())
-                        };
-
-                        let _ = WebviewWindowBuilder::new(app, "notes", url)
-                            .title("快捷便签")
-                            .inner_size(700.0, 500.0)
-                            .resizable(true)
-                            .min_inner_size(500.0, 400.0)
-                            .decorations(false)
-                            .transparent(true)
-                            .always_on_top(true)
-                            .center()
-                            .build();
-                    }
-                }
-            })?;
-
-            // 注册全局快捷键 Alt+T 打开待办日程表
-            let todo_shortcut = "Alt+T".parse::<Shortcut>().unwrap();
-            let app_handle_todo = app.handle().clone();
-            app.global_shortcut().on_shortcut(todo_shortcut, move |app, _shortcut, event| {
-                if event.state == ShortcutState::Pressed {
-                    let config = app_handle_todo.state::<AppState>();
-                    let config_guard = config.config.lock().unwrap();
-                    let quicker_enabled = config_guard.settings.quicker_enabled.unwrap_or(true);
-                    let todo_enabled = config_guard.settings.todo_schedule_enabled.unwrap_or(true);
-                    drop(config_guard);
-
-                    if !quicker_enabled || !todo_enabled {
-                        return;
-                    }
-
-                    if let Some(window) = app.get_webview_window("todo") {
-                        let is_visible = window.is_visible().unwrap_or(false);
-                        let is_minimized = window.is_minimized().unwrap_or(false);
-
-                        if is_visible && !is_minimized {
-                            let _ = window.hide();
-                        } else {
-                            let _ = window.show();
-                            let _ = window.unminimize();
-                            let _ = window.set_focus();
-                        }
-                    } else {
-                        let url = if cfg!(debug_assertions) {
-                            WebviewUrl::External("http://localhost:1420/todo.html".parse().unwrap())
-                        } else {
-                            WebviewUrl::App("todo.html".into())
-                        };
-
-                        let _ = WebviewWindowBuilder::new(app, "todo", url)
-                            .title("待办日程表")
-                            .inner_size(820.0, 620.0)
-                            .min_inner_size(680.0, 520.0)
-                            .resizable(true)
-                            .decorations(false)
-                            .transparent(true)
-                            .always_on_top(true)
-                            .center()
-                            .build();
-                    }
-                }
-            })?;
+            let shortcut_config = {
+                let state = app.state::<AppState>();
+                let config = state.config.lock().unwrap();
+                config.clone()
+            };
+            utils::shortcuts::register_configured_shortcuts(app.handle(), &shortcut_config)
+                .map_err(|error| std::io::Error::new(std::io::ErrorKind::Other, error))?;
 
             Ok(())
         })

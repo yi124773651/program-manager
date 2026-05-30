@@ -241,8 +241,8 @@ const actionGroups = computed(() => {
 })
 
 // 初始化 actionsStore
-onMounted(() => {
-  actionsStore.init()
+onMounted(async () => {
+  await actionsStore.init()
   // 不再在每个卡片上注册全局监听器，而是在显示菜单时添加
 })
 

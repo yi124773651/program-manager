@@ -196,7 +196,7 @@
                 全局快捷键唤起
               </div>
               <div class="setting-desc">
-                按下 <kbd>{{ settings.globalShortcut || 'Alt+Space' }}</kbd> 快速显示/隐藏窗口，无论当前在哪个应用中
+                按下 <kbd>{{ shortcutValue('globalShortcut') }}</kbd> 快速显示/隐藏窗口，无论当前在哪个应用中
               </div>
             </div>
             <div class="setting-control">
@@ -244,7 +244,7 @@
                 快捷搜索
               </div>
               <div class="setting-desc">
-                按下 <kbd>{{ settings.spotlightShortcut || 'Ctrl+K' }}</kbd> 打开 Spotlight 风格搜索框，快速搜索应用、剪贴板和网页
+                按下 <kbd>{{ shortcutValue('spotlightShortcut') }}</kbd> 打开 Spotlight 风格搜索框，快速搜索应用、剪贴板和网页
               </div>
             </div>
             <div class="setting-control">
@@ -268,7 +268,7 @@
                 快捷便签
               </div>
               <div class="setting-desc">
-                按下 <kbd>{{ settings.quickNotesShortcut || 'Alt+N' }}</kbd> 快速打开便签，记录临时内容，自动保存
+                按下 <kbd>{{ shortcutValue('quickNotesShortcut') }}</kbd> 快速打开便签，记录临时内容，自动保存
               </div>
             </div>
             <div class="setting-control">
@@ -292,7 +292,7 @@
                 待办日程表
               </div>
               <div class="setting-desc">
-                按下 <kbd>Alt+T</kbd> 打开或隐藏独立待办窗口，支持开始/结束时间、任务说明和一键清理今天之前记录
+                按下 <kbd>{{ shortcutValue('todoShortcut') }}</kbd> 打开或隐藏独立待办窗口，支持开始/结束时间、任务说明和一键清理今天之前记录
               </div>
             </div>
             <div class="setting-control">
@@ -305,6 +305,72 @@
                 />
                 <span class="toggle-slider"></span>
               </label>
+            </div>
+          </div>
+
+          <!-- 快捷键配置 -->
+          <div class="shortcut-panel" :class="{ disabled: settings.quickerEnabled === false }">
+            <div class="shortcut-panel-header">
+              <div>
+                <div class="setting-label">
+                  <KeyboardIcon :size="16" class="feature-icon" />
+                  快捷键配置
+                </div>
+                <div class="setting-desc">
+                  保存后立即重新注册；如果系统占用或格式无效，会保留旧设置
+                </div>
+              </div>
+            </div>
+
+            <div class="shortcut-grid">
+              <div
+                v-for="shortcut in shortcutControls"
+                :key="shortcut.field"
+                class="shortcut-row"
+              >
+                <div class="shortcut-info">
+                  <span>{{ shortcut.label }}</span>
+                  <kbd>{{ shortcutValue(shortcut.field) }}</kbd>
+                </div>
+                <div class="shortcut-editor">
+                  <input
+                    type="text"
+                    class="shortcut-input"
+                    :value="shortcutValue(shortcut.field)"
+                    :disabled="settings.quickerEnabled === false || shortcutSaving === shortcut.field"
+                    @change="saveShortcutFromInput($event, shortcut.field)"
+                    @keydown.enter.prevent="saveShortcutFromInput($event, shortcut.field)"
+                  />
+                  <button
+                    class="btn-secondary btn-compact"
+                    :class="{ active: recordingShortcutField === shortcut.field }"
+                    :disabled="settings.quickerEnabled === false || shortcutSaving === shortcut.field"
+                    @click="startShortcutRecording(shortcut.field)"
+                  >
+                    {{ recordingShortcutField === shortcut.field ? '按键中' : '录制' }}
+                  </button>
+                  <button
+                    class="btn-secondary btn-compact"
+                    :disabled="settings.quickerEnabled === false || shortcutSaving === shortcut.field"
+                    @click="restoreShortcutDefault(shortcut.field)"
+                  >
+                    默认
+                  </button>
+                </div>
+                <div v-if="shortcutFieldError(shortcut.field)" class="shortcut-feedback error">
+                  {{ shortcutFieldError(shortcut.field) }}
+                </div>
+              </div>
+            </div>
+
+            <div v-if="shortcutConflicts.length > 0" class="shortcut-feedback error">
+              {{ shortcutConflicts.join('；') }}
+            </div>
+            <div v-if="shortcutSaveError" class="shortcut-feedback error">
+              {{ shortcutSaveError }}
+            </div>
+            <div v-if="shortcutSaveMessage" class="shortcut-feedback success">
+              {{ shortcutSaveMessage }}
             </div>
           </div>
 
@@ -337,19 +403,19 @@
             <div class="tip-title">快捷键说明</div>
             <div class="tip-list">
               <div class="tip-row">
-                <kbd>Alt+Space</kbd>
+                <kbd>{{ shortcutValue('globalShortcut') }}</kbd>
                 <span>显示/隐藏窗口</span>
               </div>
               <div class="tip-row">
-                <kbd>Ctrl+K</kbd>
+                <kbd>{{ shortcutValue('spotlightShortcut') }}</kbd>
                 <span>打开快捷搜索</span>
               </div>
               <div class="tip-row">
-                <kbd>Alt+N</kbd>
+                <kbd>{{ shortcutValue('quickNotesShortcut') }}</kbd>
                 <span>打开快捷便签</span>
               </div>
               <div class="tip-row">
-                <kbd>Alt+T</kbd>
+                <kbd>{{ shortcutValue('todoShortcut') }}</kbd>
                 <span>打开或隐藏待办日程表窗口</span>
               </div>
               <div class="tip-row">
@@ -379,13 +445,86 @@
           </div>
         </section>
 
+        <!-- 数据导入导出 -->
+        <section class="settings-section">
+          <div class="section-header">
+            <h3>数据导入导出</h3>
+            <p class="section-description">导出完整本地数据包，或从数据包选择性覆盖导入</p>
+          </div>
+          <div class="setting-item">
+            <div class="setting-info">
+              <div class="setting-label">导出本地数据</div>
+              <div class="setting-desc">包含主配置、场景、便签、待办、剪贴板、快捷动作和图标目录</div>
+            </div>
+            <div class="setting-control">
+              <button class="btn-primary" :disabled="dataTransferBusy" @click="handleExportLocalData">
+                导出数据包
+              </button>
+            </div>
+          </div>
+
+          <div class="setting-item import-setting">
+            <div class="setting-info">
+              <div class="setting-label">导入本地数据</div>
+              <div class="setting-desc">选择导出目录中的 manifest.json，导入前会自动备份当前数据</div>
+            </div>
+            <div class="setting-control">
+              <button class="btn-secondary" :disabled="dataTransferBusy" @click="handleSelectImportManifest">
+                选择数据包
+              </button>
+            </div>
+          </div>
+
+          <div v-if="importPreview" class="import-preview">
+            <div class="import-preview-header">
+              <div>
+                <div class="import-preview-title">导入预览</div>
+                <div class="setting-desc">
+                  版本 {{ importPreview.appVersion }}，导出于 {{ formatImportTime(importPreview.exportedAt) }}
+                </div>
+              </div>
+              <button class="btn-primary" :disabled="!canImportSelected || dataTransferBusy" @click="handleImportLocalData">
+                覆盖导入
+              </button>
+            </div>
+
+            <div v-if="importPreview.errors.length > 0" class="data-transfer-feedback error">
+              {{ importPreview.errors.join('；') }}
+            </div>
+
+            <div class="import-section-list">
+              <label
+                v-for="section in importPreview.sections"
+                :key="section.section"
+                class="import-section-row"
+                :class="{ disabled: !section.available || !!section.error }"
+              >
+                <input
+                  type="checkbox"
+                  :checked="selectedImportSections.includes(section.section)"
+                  :disabled="!section.available || !!section.error || dataTransferBusy"
+                  @change="toggleImportSection(section.section, ($event.target as HTMLInputElement).checked)"
+                />
+                <span class="import-section-main">
+                  <span class="import-section-label">{{ section.label }}</span>
+                  <span class="import-section-desc">{{ importSectionText(section) }}</span>
+                </span>
+              </label>
+            </div>
+          </div>
+
+          <div v-if="dataTransferMessage" class="data-transfer-feedback" :class="dataTransferStatus">
+            {{ dataTransferMessage }}
+          </div>
+        </section>
+
         <!-- 关于 -->
         <section class="settings-section">
           <div class="section-header">
             <h3>关于</h3>
           </div>
           <div class="about-info">
-            <p><strong>程序管理器</strong> v1.1.0</p>
+            <p><strong>程序管理器</strong> v1.1.4</p>
             <p class="about-desc">一个现代化的 Windows 程序管理工具</p>
           </div>
         </section>
@@ -399,12 +538,35 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
-import { open } from '@tauri-apps/plugin-dialog'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ask, open } from '@tauri-apps/plugin-dialog'
 import { readFile } from '@tauri-apps/plugin-fs'
 import { XIcon, KeyboardIcon, ClipboardListIcon, SearchIcon, StickyNoteIcon, CalculatorIcon, CalendarDaysIcon } from 'lucide-vue-next'
 import { useAppStore } from '@/stores/appStore'
-import { DEFAULT_THEME_COLORS } from '@/types'
+import { useActionsStore } from '@/stores/actionsStore'
+import { useClipboardStore } from '@/stores/clipboardStore'
+import { useNotesStore } from '@/stores/notesStore'
+import { useScenesStore } from '@/stores/scenesStore'
+import { useTodoStore } from '@/stores/todoStore'
+import { DEFAULT_THEME_COLORS, type AppSettings } from '@/types'
+import { tauriAdapter, type LocalDataImportPreview, type LocalDataSection } from '@/adapters/tauriAdapter'
+import {
+  canImportLocalData,
+  exportLocalDataWithPicker,
+  importLocalDataWithConfirmation,
+  importSectionText,
+  previewLocalDataImportWithPicker,
+  toggleImportSectionSelection
+} from '@/services/localDataService'
+import {
+  DEFAULT_SHORTCUTS,
+  SHORTCUT_DEFINITIONS,
+  getActiveShortcutConflicts,
+  getShortcutValue,
+  normalizeShortcutText,
+  shortcutFromKeyboardEvent,
+  type ShortcutField
+} from '@/services/shortcutService'
 import MaintenancePanel from './MaintenancePanel.vue'
 
 defineEmits(['close'])
@@ -420,6 +582,123 @@ const apiBackgroundLoading = ref(false)
 
 // 预设主题色
 const themeColors = DEFAULT_THEME_COLORS
+const shortcutControls = SHORTCUT_DEFINITIONS
+const shortcutSaving = ref<ShortcutField | null>(null)
+const recordingShortcutField = ref<ShortcutField | null>(null)
+const shortcutSaveError = ref<string | null>(null)
+const shortcutSaveMessage = ref<string | null>(null)
+const shortcutErrors = ref<Partial<Record<ShortcutField, string>>>({})
+const dataTransferBusy = ref(false)
+const dataTransferMessage = ref('')
+const dataTransferStatus = ref<'success' | 'error'>('success')
+const importPreview = ref<LocalDataImportPreview | null>(null)
+const selectedImportSections = ref<LocalDataSection[]>([])
+
+const shortcutConflicts = computed(() => getActiveShortcutConflicts(settings.value))
+
+const shortcutValue = (field: ShortcutField) => getShortcutValue(settings.value, field)
+
+const shortcutFieldError = (field: ShortcutField) => shortcutErrors.value[field] || null
+const canImportSelected = computed(() => {
+  return canImportLocalData(importPreview.value, selectedImportSections.value)
+})
+
+const setShortcutError = (field: ShortcutField, message: string) => {
+  shortcutErrors.value = {
+    ...shortcutErrors.value,
+    [field]: message
+  }
+  shortcutSaveMessage.value = null
+}
+
+const clearShortcutError = (field: ShortcutField) => {
+  const nextErrors = { ...shortcutErrors.value }
+  delete nextErrors[field]
+  shortcutErrors.value = nextErrors
+}
+
+const saveShortcutSettings = async (
+  patch: Partial<AppSettings>,
+  errorField: ShortcutField,
+  successMessage = '快捷键设置已保存'
+) => {
+  const nextSettings = { ...settings.value, ...patch }
+  const conflicts = getActiveShortcutConflicts(nextSettings)
+
+  if (conflicts.length > 0) {
+    setShortcutError(errorField, conflicts.join('；'))
+    return false
+  }
+
+  const previousSettings = { ...settings.value }
+  shortcutSaving.value = errorField
+  shortcutSaveError.value = null
+  shortcutSaveMessage.value = null
+
+  try {
+    await appStore.updateSettings(patch, { immediate: true })
+    clearShortcutError(errorField)
+    shortcutSaveMessage.value = successMessage
+    return true
+  } catch (error) {
+    Object.assign(appStore.config.settings, previousSettings)
+    shortcutSaveError.value = `保存快捷键设置失败：${String(error)}`
+    return false
+  } finally {
+    shortcutSaving.value = null
+  }
+}
+
+const saveShortcutValue = async (field: ShortcutField, rawValue: string) => {
+  const normalized = normalizeShortcutText(rawValue)
+
+  if (!normalized.shortcut) {
+    setShortcutError(field, normalized.error || '快捷键格式无效')
+    return false
+  }
+
+  recordingShortcutField.value = null
+  return saveShortcutSettings(
+    { [field]: normalized.shortcut } as Partial<AppSettings>,
+    field
+  )
+}
+
+const saveShortcutFromInput = async (event: Event, field: ShortcutField) => {
+  await saveShortcutValue(field, (event.target as HTMLInputElement).value)
+}
+
+const startShortcutRecording = (field: ShortcutField) => {
+  recordingShortcutField.value = field
+  clearShortcutError(field)
+  shortcutSaveError.value = null
+  shortcutSaveMessage.value = '请按下新的组合键'
+}
+
+const restoreShortcutDefault = async (field: ShortcutField) => {
+  await saveShortcutValue(field, DEFAULT_SHORTCUTS[field])
+}
+
+const handleShortcutRecording = (event: KeyboardEvent) => {
+  if (!recordingShortcutField.value) return
+
+  const shortcut = shortcutFromKeyboardEvent(event, { metaAsCtrl: true })
+  if (!shortcut) return
+
+  event.preventDefault()
+  event.stopPropagation()
+
+  const field = recordingShortcutField.value
+  void saveShortcutValue(field, shortcut)
+}
+
+onMounted(() => {
+  window.addEventListener('keydown', handleShortcutRecording, true)
+})
+
+onUnmounted(() => {
+  window.removeEventListener('keydown', handleShortcutRecording, true)
+})
 
 // 更新主题色
 const updateThemeColor = async (color: string) => {
@@ -503,12 +782,12 @@ const updateWindowOpacity = async (opacity: number) => {
 // 效率工具开关
 const toggleQuicker = async (event: Event) => {
   const checked = (event.target as HTMLInputElement).checked
-  await appStore.updateSettings({ quickerEnabled: checked })
+  await saveShortcutSettings({ quickerEnabled: checked }, 'globalShortcut')
 }
 
 const toggleGlobalShortcut = async (event: Event) => {
   const checked = (event.target as HTMLInputElement).checked
-  await appStore.updateSettings({ globalShortcutEnabled: checked })
+  await saveShortcutSettings({ globalShortcutEnabled: checked }, 'globalShortcut')
 }
 
 const toggleClipboardHistory = async (event: Event) => {
@@ -518,22 +797,122 @@ const toggleClipboardHistory = async (event: Event) => {
 
 const toggleSpotlightSearch = async (event: Event) => {
   const checked = (event.target as HTMLInputElement).checked
-  await appStore.updateSettings({ spotlightSearchEnabled: checked })
+  await saveShortcutSettings({ spotlightSearchEnabled: checked }, 'spotlightShortcut')
 }
 
 const toggleQuickNotes = async (event: Event) => {
   const checked = (event.target as HTMLInputElement).checked
-  await appStore.updateSettings({ quickNotesEnabled: checked })
+  await saveShortcutSettings({ quickNotesEnabled: checked }, 'quickNotesShortcut')
 }
 
 const toggleTodoSchedule = async (event: Event) => {
   const checked = (event.target as HTMLInputElement).checked
-  await appStore.updateSettings({ todoScheduleEnabled: checked })
+  await saveShortcutSettings({ todoScheduleEnabled: checked }, 'todoShortcut')
 }
 
 const toggleCalculator = async (event: Event) => {
   const checked = (event.target as HTMLInputElement).checked
   await appStore.updateSettings({ calculatorEnabled: checked })
+}
+
+const showDataTransferStatus = (message: string, type: 'success' | 'error' = 'success') => {
+  dataTransferMessage.value = message
+  dataTransferStatus.value = type
+}
+
+const formatImportTime = (timestamp: number) => new Date(timestamp).toLocaleString('zh-CN', { hour12: false })
+
+const toggleImportSection = (section: LocalDataSection, checked: boolean) => {
+  selectedImportSections.value = toggleImportSectionSelection(
+    selectedImportSections.value,
+    section,
+    checked
+  )
+}
+
+const refreshImportedStores = async () => {
+  await appStore.reloadConfig()
+  await useScenesStore().loadFromStorage()
+  await useNotesStore().loadFromStorage()
+  await useTodoStore().loadFromStorage()
+  await useClipboardStore().loadFromStorage()
+  await useActionsStore().loadFromStorage()
+}
+
+const handleExportLocalData = async () => {
+  dataTransferBusy.value = true
+  dataTransferMessage.value = ''
+  try {
+    const flow = await exportLocalDataWithPicker({
+      pickExportDir: () => open({
+        directory: true,
+        multiple: false,
+        title: '选择数据包导出目录'
+      }),
+      exportLocalData: tauriAdapter.exportLocalData
+    })
+    if (flow.feedback) {
+      showDataTransferStatus(flow.feedback.message, flow.feedback.status)
+    }
+  } finally {
+    dataTransferBusy.value = false
+  }
+}
+
+const handleSelectImportManifest = async () => {
+  dataTransferBusy.value = true
+  dataTransferMessage.value = ''
+  try {
+    const flow = await previewLocalDataImportWithPicker({
+      pickManifest: () => open({
+        multiple: false,
+        title: '选择数据包 manifest.json',
+        filters: [{ name: 'JSON', extensions: ['json'] }]
+      }),
+      previewLocalDataImport: tauriAdapter.previewLocalDataImport
+    })
+    if (!flow.completed) return
+
+    importPreview.value = flow.preview
+    selectedImportSections.value = flow.selectedSections
+    if (flow.feedback) {
+      showDataTransferStatus(flow.feedback.message, flow.feedback.status)
+    }
+  } finally {
+    dataTransferBusy.value = false
+  }
+}
+
+const handleImportLocalData = async () => {
+  if (!importPreview.value || selectedImportSections.value.length === 0) return
+
+  dataTransferBusy.value = true
+  dataTransferMessage.value = ''
+  try {
+    const flow = await importLocalDataWithConfirmation(
+      importPreview.value,
+      selectedImportSections.value,
+      {
+        confirmImport: (message) => ask(message, {
+          title: '确认覆盖导入',
+          kind: 'warning',
+          okLabel: '确认导入',
+          cancelLabel: '取消'
+        }),
+        importLocalData: tauriAdapter.importLocalData,
+        refreshImportedData: refreshImportedStores
+      }
+    )
+    if (flow.feedback) {
+      showDataTransferStatus(flow.feedback.message, flow.feedback.status)
+    }
+    if (flow.resetPreview) {
+      importPreview.value = null
+      selectedImportSections.value = []
+    }
+  } finally {
+    dataTransferBusy.value = false
+  }
 }
 </script>
 
@@ -841,6 +1220,97 @@ button:disabled {
   font-size: 13px !important;
 }
 
+.import-setting {
+  margin-bottom: 0;
+}
+
+.import-preview {
+  margin-top: 12px;
+  padding: 16px 20px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+}
+
+.import-preview-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 12px;
+}
+
+.import-preview-title {
+  font-size: 14px;
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+
+.import-section-list {
+  display: grid;
+  gap: 8px;
+}
+
+.import-section-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+}
+
+.import-section-row.disabled {
+  opacity: 0.55;
+}
+
+.import-section-row input {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--primary-color);
+}
+
+.import-section-main {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex: 1;
+  min-width: 0;
+}
+
+.import-section-label {
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.import-section-desc {
+  color: var(--text-secondary);
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.data-transfer-feedback {
+  margin-top: 12px;
+  padding: 10px 12px;
+  border-radius: 6px;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.data-transfer-feedback.success {
+  background: rgba(52, 199, 89, 0.12);
+  color: var(--success-color, #34c759);
+}
+
+.data-transfer-feedback.error {
+  background: rgba(255, 59, 48, 0.1);
+  color: var(--danger-color);
+}
+
 /* 开关样式 */
 .toggle-switch {
   position: relative;
@@ -899,6 +1369,11 @@ button:disabled {
   pointer-events: none;
 }
 
+.shortcut-panel.disabled {
+  opacity: 0.5;
+  pointer-events: none;
+}
+
 .setting-item.disabled .toggle-switch {
   pointer-events: auto;
 }
@@ -922,6 +1397,102 @@ button:disabled {
   background: var(--bg-secondary);
   border-radius: 8px;
   border: 1px solid var(--border-color);
+}
+
+.shortcut-panel {
+  margin-bottom: 12px;
+  padding: 16px 20px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+}
+
+.shortcut-panel-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 14px;
+}
+
+.shortcut-grid {
+  display: grid;
+  gap: 10px;
+}
+
+.shortcut-row {
+  display: grid;
+  grid-template-columns: minmax(150px, 1fr) minmax(280px, auto);
+  align-items: center;
+  gap: 10px 16px;
+}
+
+.shortcut-info {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+  color: var(--text-primary);
+  font-size: 13px;
+}
+
+.shortcut-info kbd {
+  flex-shrink: 0;
+  min-width: 80px;
+  padding: 3px 8px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  color: var(--text-secondary);
+  font-family: inherit;
+  font-size: 12px;
+  text-align: center;
+}
+
+.shortcut-editor {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.shortcut-input {
+  width: 130px;
+  padding: 7px 10px;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font-size: 13px;
+  outline: none;
+}
+
+.shortcut-input:focus {
+  border-color: var(--primary-color);
+}
+
+.btn-compact {
+  min-width: 56px;
+  padding: 7px 10px;
+  justify-content: center;
+}
+
+.btn-compact.active {
+  background: var(--primary-color);
+  color: white;
+}
+
+.shortcut-feedback {
+  grid-column: 1 / -1;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.shortcut-feedback.error {
+  color: var(--danger-color);
+}
+
+.shortcut-feedback.success {
+  color: var(--success-color, #34c759);
 }
 
 .tip-title {

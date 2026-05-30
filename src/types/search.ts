@@ -1,5 +1,5 @@
 // 搜索结果类型
-export type SearchResultType = 'app' | 'clipboard' | 'web' | 'calculator'
+export type SearchResultType = 'app' | 'clipboard' | 'scene' | 'note' | 'todo' | 'web' | 'calculator'
 
 // 搜索结果项
 export interface SearchResult {

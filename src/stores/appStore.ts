@@ -1,34 +1,10 @@
 import { defineStore } from 'pinia'
-import { invoke } from '@tauri-apps/api/core'
-import { convertFileSrc } from '@tauri-apps/api/core'
+import { listen, type UnlistenFn } from '@tauri-apps/api/event'
 import type { App, Category, Config, AppSettings, ManagedItemType } from '@/types'
 import { DEFAULT_CONFIG, canCheckForUpdates } from '@/types'
+import { configService } from '@/services/configService'
 
-// 图标目录路径缓存
-let iconsDir: string | null = null
-
-// 获取图标 URL
-async function getIconUrl(iconValue: string | undefined): Promise<string | undefined> {
-  if (!iconValue) return undefined
-
-  // 如果是 base64 格式，直接返回（兼容旧数据）
-  if (iconValue.startsWith('data:')) {
-    return iconValue
-  }
-
-  // 如果是文件名格式，转换为本地文件 URL
-  if (!iconsDir) {
-    iconsDir = await invoke<string>('get_icons_dir')
-    console.log('Icons directory:', iconsDir)
-  }
-
-  // 使用路径分隔符（兼容 Windows 和 Unix）
-  const separator = iconsDir.includes('\\') ? '\\' : '/'
-  const iconPath = `${iconsDir}${separator}${iconValue}`
-  const url = convertFileSrc(iconPath)
-  console.log('Icon path:', iconPath, '-> URL:', url)
-  return url
-}
+let configChangedUnlisten: UnlistenFn | null = null
 
 export const useAppStore = defineStore('app', {
   state: () => ({
@@ -37,6 +13,7 @@ export const useAppStore = defineStore('app', {
     searchQuery: '',
     loading: false,
     initialized: false,
+    lastSaveError: null as string | null,
     // 图标 URL 缓存
     iconUrlCache: {} as Record<string, string>
   }),
@@ -91,6 +68,7 @@ export const useAppStore = defineStore('app', {
     async init() {
       if (this.initialized) return
       await this.loadConfig()
+      await this.setupConfigChangedListener()
     },
 
     // 重新加载配置（强制从后端读取最新数据）
@@ -101,21 +79,15 @@ export const useAppStore = defineStore('app', {
     async loadConfig() {
       this.loading = true
       try {
-        const config = await invoke<Config>('load_config')
-        this.config = config
+        const config = await configService.loadConfig()
+        this.applyConfig(config)
 
         // 强制更新 sortBy 为 lastLaunched（确保启动的应用自动靠前）
         if (this.config.settings.sortBy !== 'lastLaunched') {
           this.config.settings.sortBy = 'lastLaunched'
           await this.saveConfig()
         }
-
-        this.currentCategory = config.settings.lastCategory || this.categories[0]?.id || null
         this.initialized = true
-
-        // 重建图标 URL 缓存
-        this.iconUrlCache = {}
-        this.preloadIconUrls()
       } catch (error) {
         console.error('加载配置失败:', error)
         this.config = DEFAULT_CONFIG
@@ -124,11 +96,28 @@ export const useAppStore = defineStore('app', {
       }
     },
 
+    applyConfig(config: Config) {
+      this.config = config
+      this.currentCategory = config.settings.lastCategory || this.categories[0]?.id || null
+
+      // 配置变化可能包含图标文件名迁移或应用变更，需要重建缓存。
+      this.iconUrlCache = {}
+      this.preloadIconUrls()
+    },
+
+    async setupConfigChangedListener() {
+      if (configChangedUnlisten) return
+
+      configChangedUnlisten = await listen<Config>('config-changed', (event) => {
+        this.applyConfig(event.payload)
+      })
+    },
+
     // 预加载图标 URL（异步，不阻塞）
     async preloadIconUrls() {
       for (const app of Object.values(this.config.apps)) {
         if (app.icon && !this.iconUrlCache[app.id]) {
-          getIconUrl(app.icon).then(url => {
+          configService.getIconUrl(app.icon).then(url => {
             if (url) {
               this.iconUrlCache[app.id] = url
             }
@@ -147,7 +136,7 @@ export const useAppStore = defineStore('app', {
       const app = this.config.apps[appId]
       if (!app?.icon) return undefined
 
-      const url = await getIconUrl(app.icon)
+      const url = await configService.getIconUrl(app.icon)
       if (url) {
         this.iconUrlCache[appId] = url
       }
@@ -170,19 +159,40 @@ export const useAppStore = defineStore('app', {
       }, 500)
     },
 
-    // 立即保存配置
-    async saveConfigNow() {
+    // 立即保存配置；快捷键设置需要拿到错误以展示注册失败，其余高频路径保持静默记录。
+    async saveConfigNow(options: { throwOnError?: boolean } = {}) {
       try {
-        await invoke('save_config', { config: this.config })
+        await configService.saveConfig(this.config)
         this._isDirty = false
+        this.lastSaveError = null
       } catch (error) {
         console.error('保存配置失败:', error)
+        this.lastSaveError = String(error)
+        if (options.throwOnError) {
+          throw error
+        }
       }
     },
 
     // 兼容旧接口
-    async saveConfig() {
-      await this.saveConfigNow()
+    async saveConfig(options: { throwOnError?: boolean } = {}) {
+      if (this._saveTimeout) {
+        clearTimeout(this._saveTimeout)
+        this._saveTimeout = null
+      }
+
+      await this.saveConfigNow(options)
+    },
+
+    async flushPendingSave() {
+      if (this._saveTimeout) {
+        clearTimeout(this._saveTimeout)
+        this._saveTimeout = null
+      }
+
+      if (this._isDirty) {
+        await this.saveConfigNow()
+      }
     },
 
     async selectCategory(categoryId: string) {
@@ -192,7 +202,7 @@ export const useAppStore = defineStore('app', {
     },
 
     async addCategory(name: string): Promise<Category> {
-      const category = await invoke<Category>('add_category', { name })
+      const category = await configService.addCategory(name)
       this.config.categories[category.id] = category
       if (!this.currentCategory) this.currentCategory = category.id
       await this.saveConfig()
@@ -212,18 +222,13 @@ export const useAppStore = defineStore('app', {
     },
 
     async addApp(appData: { name: string; path: string; category: string; itemType?: ManagedItemType }): Promise<App> {
-      const app = await invoke<App>('add_app', {
-        name: appData.name,
-        path: appData.path,
-        categoryId: appData.category,
-        itemType: appData.itemType
-      })
+      const app = await configService.addApp(appData)
       this.config.apps[app.id] = app
       this.config.categories[appData.category]?.apps.push(app.id)
 
       // 预加载新应用的图标 URL
       if (app.icon) {
-        getIconUrl(app.icon).then(url => {
+        configService.getIconUrl(app.icon).then(url => {
           if (url) {
             this.iconUrlCache[app.id] = url
           }
@@ -232,7 +237,7 @@ export const useAppStore = defineStore('app', {
 
       // 只有可执行程序才参与更新基准初始化
       if (canCheckForUpdates(app.itemType)) {
-        invoke('init_update_baseline', { appId: app.id }).catch(err => {
+        configService.initUpdateBaseline(app.id).catch(err => {
           console.warn(`初始化基准数据失败 (${app.name}):`, err)
         })
       }
@@ -245,7 +250,7 @@ export const useAppStore = defineStore('app', {
       const app = this.config.apps[appId]
       if (app) {
         // 调用后端删除（包括删除图标文件）
-        await invoke('delete_app', { appId })
+        await configService.deleteApp(appId)
 
         Object.values(this.config.categories).forEach(cat => {
           cat.apps = cat.apps.filter(id => id !== appId)
@@ -259,7 +264,7 @@ export const useAppStore = defineStore('app', {
     },
 
     async launchApp(appId: string) {
-      await invoke('launch_app', { appId })
+      await configService.launchApp(appId)
       const app = this.config.apps[appId]
       if (app) {
         app.lastLaunched = Date.now()
@@ -271,8 +276,12 @@ export const useAppStore = defineStore('app', {
       this.searchQuery = query
     },
 
-    async updateSettings(settings: Partial<AppSettings>) {
+    async updateSettings(settings: Partial<AppSettings>, options: { immediate?: boolean } = {}) {
       Object.assign(this.config.settings, settings)
+      if (options.immediate) {
+        await this.saveConfig({ throwOnError: true })
+        return
+      }
       this.debouncedSaveConfig() // 设置更新使用防抖保存
     },
 
@@ -355,7 +364,7 @@ export const useAppStore = defineStore('app', {
       if (!url) return false
 
       try {
-        const dataUrl = await invoke<string>('fetch_image_as_base64', { url })
+        const dataUrl = await configService.fetchImageAsBase64(url)
         this.config.settings.backgroundImage = dataUrl
         this.debouncedSaveConfig()
         return true

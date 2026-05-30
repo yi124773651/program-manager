@@ -68,6 +68,7 @@ pub struct Category {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
 pub struct AppSettings {
     #[serde(rename = "cardSize")]
     pub card_size: String,
@@ -124,6 +125,9 @@ pub struct AppSettings {
     #[serde(rename = "todoScheduleEnabled")]
     pub todo_schedule_enabled: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "todoShortcut")]
+    pub todo_shortcut: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     #[serde(rename = "backgroundSource")]
     pub background_source: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -154,6 +158,7 @@ impl Default for AppSettings {
             quick_notes_shortcut: Some("Alt+N".to_string()),
             calculator_enabled: Some(true),
             todo_schedule_enabled: Some(true),
+            todo_shortcut: Some("Alt+T".to_string()),
             background_source: Some("local".to_string()),
             background_api_url: None,
         }
@@ -162,10 +167,18 @@ impl Default for AppSettings {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Config {
+    #[serde(default = "default_config_version")]
     pub version: String,
+    #[serde(default)]
     pub categories: HashMap<String, Category>,
+    #[serde(default)]
     pub apps: HashMap<String, App>,
+    #[serde(default)]
     pub settings: AppSettings,
+}
+
+fn default_config_version() -> String {
+    "1.0".to_string()
 }
 
 impl Default for Config {

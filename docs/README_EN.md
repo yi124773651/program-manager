@@ -4,7 +4,7 @@
 
 **A Modern, Lightweight Application Launcher & Productivity Tool**
 
-[![Version](https://img.shields.io/badge/Version-1.1.0-blue?style=flat-square)](https://github.com/yi124773651/program-manager/releases)
+[![Version](https://img.shields.io/badge/Version-1.1.4-blue?style=flat-square)](https://github.com/yi124773651/program-manager/releases)
 [![GitHub](https://img.shields.io/badge/GitHub-Repository-181717?style=flat-square&logo=github&logoColor=white)](https://github.com/yi124773651/program-manager)
 
 [![Tauri](https://img.shields.io/badge/Tauri-2.0-24C8D8?style=flat-square&logo=tauri&logoColor=white)](https://tauri.app/)
@@ -64,16 +64,20 @@ English | **[简体中文](../README.md)**
 - 💻 **System Integration** - System tray, single instance, context menu
 
 ### Productivity Tools
-- 🎬 **Scene Workflow** - Execute multiple actions with one click, supports 8 action types
+- 🎬 **Scene Workflow** - Execute multiple actions with one click, supports 8 action types, failure strategy, and execution logs
 - 📋 **Clipboard History** - Auto-record clipboard content, supports pinning
-- 🔍 **Quick Search** - Spotlight-style global search
+- 🔍 **Quick Search** - Spotlight-style global search across apps, clipboard, scenes, notes, to-dos, and web
 - 📝 **Quick Notes** - Record ideas and to-dos anytime
+- ✅ **To-do Schedule** - Dedicated to-do window with dates, completion state, and quick-search integration
 - 🧮 **Calculator** - Calculate expressions directly in search box
+- ⌨️ **Configurable Shortcuts** - Global launcher, quick search, notes, and to-do shortcuts with conflict hints and restore defaults
 - 🎨 **Personalization** - Custom theme color, background image (local / random image API), window opacity
 
 ### Maintenance Tools
-- 🧹 **Clean Invalid Items** - One-click detection of invalid programs, batch delete invalid icons
+- 🧹 **Clean Invalid Items** - One-click detection of invalid programs, with confirmation before batch deletion
 - 🔄 **Update Detection** - Smart update detection with version number and file metadata hybrid approach
+- 📦 **Local Import / Export** - Export full local data package with import preview, selective overwrite, and pre-import backup
+- 💾 **Unified Local Storage** - Scenes, notes, to-dos, clipboard, and action settings are persisted as local JSON files, with legacy data migration
 
 ## 🎬 Scene Feature
 
@@ -118,10 +122,28 @@ npm run tauri dev
 ### Build
 
 ```bash
+npm run check:versions
+npm run test
+npm run build
 npm run tauri build
 ```
 
-Output: `src-tauri/target/release/bundle/`
+Output is usually under `src-tauri/target/release/bundle/nsis/`. If `CARGO_TARGET_DIR` is set, artifacts are written under that target directory.
+
+Recommended release checks:
+
+```bash
+cd src-tauri
+cargo fmt --check
+cargo test
+cargo check
+```
+
+### GitHub Actions
+
+- `CI`: runs on branch push and pull requests targeting `main`; it checks version consistency, frontend tests, frontend build, Rust formatting, Rust tests, and `cargo check`, without building a Tauri installer.
+- `Release`: runs only on `v*` tags; it requires the tag version to match `package.json` / `src-tauri/tauri.conf.json`, then builds and publishes the Tauri installer.
+- The release workflow no longer bumps versions automatically. Version changes, release notes, and tag creation must be completed manually before publishing.
 
 ### Windows Scripts
 
@@ -195,7 +217,19 @@ Click the "Maintenance" button at the bottom of the sidebar or open it from sett
 | Clipboard History | - | Auto-record clipboard content |
 | Quick Search | Ctrl+K | Spotlight-style search |
 | Quick Notes | Alt+N | Quick note recording |
+| To-do Schedule | Alt+T | Show or hide the dedicated to-do window |
 | Calculator | - | Calculate in search box |
+
+All global shortcuts can be changed in Settings. If saving fails, the old shortcut is preserved and the conflict or registration error is shown.
+
+### Local Data Import / Export
+
+In Settings, the data import/export section can:
+
+1. Export a full local data package, including `manifest.json`, config files, scenes, notes, to-dos, clipboard, action settings, and `icons/`.
+2. Select a package `manifest.json` and preview import contents.
+3. Selectively overwrite data sections.
+4. Automatically back up current data before import and try to restore it when import fails.
 
 ## 🏗️ Tech Stack
 
@@ -236,15 +270,20 @@ program-manager/
 │   ├── stores/             # Pinia state management
 │   │   ├── appStore.ts          # App state
 │   │   ├── scenesStore.ts       # Scene state
+│   │   ├── notesStore.ts        # Notes state
+│   │   ├── todoStore.ts         # To-do state
 │   │   ├── clipboardStore.ts    # Clipboard state
 │   │   ├── maintenanceStore.ts  # Maintenance state
 │   │   └── actionsStore.ts      # Actions state
+│   ├── services/           # Frontend business services
+│   ├── adapters/           # Tauri / clipboard / shell adapters
 │   ├── types/              # TypeScript type definitions
 │   └── views/              # Views
 ├── src-tauri/              # Rust backend
 │   └── src/
 │       ├── commands/       # Tauri commands
 │       ├── models/         # Data models
+│       ├── storage/        # JSON storage, atomic write, backup, and migration
 │       └── utils/          # Utilities
 │           ├── app_validator.rs # App validation
 │           └── update_checker.rs # Update detection
@@ -266,9 +305,11 @@ program-manager/
 - [x] Background image (local & random image API)
 - [x] Clean invalid items
 - [x] Update detection
+- [x] Global hotkeys
+- [x] Import/Export
+- [x] Legacy data migration
+- [x] Unified JSON local storage
 - [ ] Usage statistics
-- [ ] Global hotkeys
-- [ ] Import/Export
 
 ## ❓ FAQ
 
@@ -281,7 +322,9 @@ Tauri uses native WebView instead of bundled Chromium, and Rust binaries start i
 <details>
 <summary><b>Where is config stored?</b></summary>
 <br/>
-Windows: <code>%APPDATA%/program-manager/config.json</code>
+Windows: <code>%APPDATA%/program-manager/</code>
+<br/>
+Main files include <code>config.json</code>, <code>scenes.json</code>, <code>notes.json</code>, <code>todos.json</code>, <code>clipboard.json</code>, <code>actions.json</code>, <code>migrations.json</code>, <code>icons/</code>, and <code>backups/</code>.
 </details>
 
 <details>
@@ -293,7 +336,7 @@ No, it minimizes to system tray. Right-click tray icon → Exit to quit.
 <details>
 <summary><b>Where is scene data stored?</b></summary>
 <br/>
-Scene data is stored in browser's localStorage with key <code>app_scenes_config</code>.
+Scene data is now stored in <code>%APPDATA%/program-manager/scenes.json</code>. Legacy localStorage data is migrated to local JSON files on startup, with automatic backup before migration.
 </details>
 
 ## 📄 License

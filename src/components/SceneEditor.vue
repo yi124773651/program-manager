@@ -32,6 +32,28 @@
         </div>
       </div>
 
+      <!-- 执行策略 -->
+      <div class="scene-options">
+        <div class="option-info">
+          <span class="option-title">失败策略</span>
+          <span class="option-desc">{{ failureStrategyDescription }}</span>
+        </div>
+        <div class="segmented-control">
+          <button
+            :class="{ active: localScene.failureStrategy !== 'stop' }"
+            @click="updateFailureStrategy('continue')"
+          >
+            继续执行
+          </button>
+          <button
+            :class="{ active: localScene.failureStrategy === 'stop' }"
+            @click="updateFailureStrategy('stop')"
+          >
+            遇错中断
+          </button>
+        </div>
+      </div>
+
       <!-- 动作列表 -->
       <div class="actions-container">
         <div class="actions-header">
@@ -44,6 +66,10 @@
             v-for="(action, index) in localScene.actions"
             :key="action.id"
             class="action-item"
+            :class="[
+              `status-${getExecutionStatus(action.id)}`,
+              { running: scenesStore.currentExecutingAction === action.id }
+            ]"
           >
             <div class="action-drag-handle">
               <GripVerticalIcon :size="16" />
@@ -54,8 +80,18 @@
             <div class="action-content">
               <span class="action-type">{{ getActionTypeName(action.type) }}</span>
               <span class="action-detail">{{ getActionDetail(action) }}</span>
+              <span
+                v-if="getExecutionLog(action.id)"
+                class="action-log"
+                :class="`status-${getExecutionStatus(action.id)}`"
+              >
+                {{ getExecutionMessage(action.id) }}
+              </span>
             </div>
-            <button class="action-delete" @click="removeAction(index)">
+            <span v-if="getExecutionLog(action.id)" class="action-status" :class="`status-${getExecutionStatus(action.id)}`">
+              {{ getExecutionStatusName(action.id) }}
+            </span>
+            <button class="action-delete" :disabled="isCurrentSceneExecuting" @click="removeAction(index)">
               <TrashIcon :size="14" />
             </button>
           </div>
@@ -68,9 +104,19 @@
         </div>
       </div>
 
+      <div v-if="showExecutionPanel" class="execution-panel">
+        <div class="execution-summary">
+          <span>{{ executionSummaryText }}</span>
+          <span v-if="isCurrentSceneExecuting">{{ scenesStore.executionProgress }}%</span>
+        </div>
+        <div class="execution-progress-track">
+          <div class="execution-progress-bar" :style="{ width: executionProgressWidth }"></div>
+        </div>
+      </div>
+
       <!-- 添加动作按钮 -->
       <div class="add-action-section">
-        <button class="add-action-btn" @click="showActionPicker = true">
+        <button class="add-action-btn" :disabled="isCurrentSceneExecuting" @click="showActionPicker = true">
           <PlusIcon :size="18" />
           <span>添加动作</span>
         </button>
@@ -78,9 +124,17 @@
 
       <!-- 底部操作 -->
       <div class="editor-footer">
-        <button class="btn-test" @click="testScene" :disabled="localScene.actions.length === 0 || scenesStore.executing">
+        <button
+          v-if="isCurrentSceneExecuting"
+          class="btn-cancel-execution"
+          @click="cancelSceneExecution"
+        >
+          <XCircleIcon :size="16" />
+          <span>取消执行</span>
+        </button>
+        <button v-else class="btn-test" @click="testScene" :disabled="!canTestScene">
           <PlayIcon :size="16" />
-          <span>{{ scenesStore.executing ? '执行中...' : '测试运行' }}</span>
+          <span>{{ scenesStore.executing ? '其他场景执行中' : '测试运行' }}</span>
         </button>
         <button class="btn-done" @click="$emit('close')">完成</button>
       </div>
@@ -246,7 +300,7 @@ import { useScenesStore } from '@/stores/scenesStore'
 import { useAppStore } from '@/stores/appStore'
 import { XIcon, PlusIcon, TrashIcon, GripVerticalIcon, PlayIcon, ArrowLeftIcon, ZapIcon, RocketIcon, ShieldIcon, GlobeIcon, FolderOpenIcon, FileIcon, XCircleIcon, ClockIcon, BellIcon, ChevronDownIcon, ChevronRightIcon } from 'lucide-vue-next'
 import { open } from '@tauri-apps/plugin-dialog'
-import type { Scene, SceneAction, SceneActionType, App } from '@/types'
+import type { Scene, SceneAction, SceneActionExecutionLog, SceneActionExecutionStatus, SceneActionType, SceneFailureStrategy, App } from '@/types'
 import { SCENE_ICONS, SCENE_ACTION_TYPES, canUseProcessActions } from '@/types'
 import Sortable from 'sortablejs'
 
@@ -256,13 +310,18 @@ const emit = defineEmits<{ close: [] }>()
 const scenesStore = useScenesStore()
 const appStore = useAppStore()
 
-const localScene = reactive<Scene>({ ...props.scene, actions: [...props.scene.actions] })
+const localScene = reactive<Scene>({
+  ...props.scene,
+  failureStrategy: props.scene.failureStrategy || 'continue',
+  actions: [...props.scene.actions]
+})
 const showIconPicker = ref(false)
 const showActionPicker = ref(false)
 const showActionConfig = ref(false)
 const selectedActionType = ref<typeof SCENE_ACTION_TYPES[number] | null>(null)
 const actionsListRef = ref<HTMLElement | null>(null)
 const sortableInstance = ref<any>(null)
+const lastExecutionResult = ref<Awaited<ReturnType<typeof scenesStore.executeScene>> | null>(null)
 
 const actionParams = reactive({
   appId: '', url: '', path: '', seconds: 2, message: '',
@@ -276,6 +335,45 @@ const showLaunchOptions = ref(false)
 // 检查是否有设置高级选项
 const hasLaunchOptionsSet = computed(() => {
   return actionParams.waitWindow || actionParams.sendKeys || (actionParams.delayAfter && actionParams.delayAfter > 0)
+})
+
+const isCurrentSceneExecuting = computed(() => {
+  return scenesStore.executing && scenesStore.currentExecutingScene === localScene.id
+})
+
+const canTestScene = computed(() => {
+  return localScene.actions.length > 0 && !scenesStore.executing
+})
+
+const executionLogsForScene = computed(() => {
+  if (scenesStore.latestExecutionScene !== localScene.id && !isCurrentSceneExecuting.value) return []
+  return scenesStore.latestExecutionLogs
+})
+
+const executionLogMap = computed(() => {
+  return new Map(executionLogsForScene.value.map((log) => [log.actionId, log]))
+})
+
+const showExecutionPanel = computed(() => {
+  return isCurrentSceneExecuting.value || executionLogsForScene.value.length > 0 || lastExecutionResult.value !== null
+})
+
+const executionProgressWidth = computed(() => {
+  if (isCurrentSceneExecuting.value) return `${scenesStore.executionProgress}%`
+  if (!lastExecutionResult.value || lastExecutionResult.value.totalActions === 0) return '0%'
+  return `${Math.round((lastExecutionResult.value.completedActions / lastExecutionResult.value.totalActions) * 100)}%`
+})
+
+const executionSummaryText = computed(() => {
+  if (isCurrentSceneExecuting.value) return '场景执行中'
+  if (!lastExecutionResult.value) return '最近执行日志'
+  if (lastExecutionResult.value.cancelled) return `已取消，完成 ${lastExecutionResult.value.completedActions}/${lastExecutionResult.value.totalActions} 个动作`
+  if (!lastExecutionResult.value.success) return `执行失败，完成 ${lastExecutionResult.value.completedActions}/${lastExecutionResult.value.totalActions} 个动作`
+  return `执行完成，成功 ${lastExecutionResult.value.completedActions}/${lastExecutionResult.value.totalActions} 个动作`
+})
+
+const failureStrategyDescription = computed(() => {
+  return localScene.failureStrategy === 'stop' ? '动作失败后停止后续步骤' : '动作失败后继续执行后续步骤'
 })
 
 // 按分类组织的应用列表（使用缓存的图标URL）
@@ -352,6 +450,11 @@ function updateSceneName() {
   if (localScene.name.trim()) scenesStore.updateScene(localScene.id, { name: localScene.name.trim() })
 }
 
+function updateFailureStrategy(strategy: SceneFailureStrategy) {
+  localScene.failureStrategy = strategy
+  scenesStore.updateScene(localScene.id, { failureStrategy: strategy })
+}
+
 function selectActionType(actionType: typeof SCENE_ACTION_TYPES[number]) {
   selectedActionType.value = actionType
   showActionPicker.value = false
@@ -402,6 +505,7 @@ function confirmAddAction() {
 }
 
 function removeAction(index: number) {
+  if (isCurrentSceneExecuting.value) return
   const action = localScene.actions[index]
   if (action) {
     scenesStore.removeActionFromScene(localScene.id, action.id)
@@ -411,9 +515,44 @@ function removeAction(index: number) {
 
 async function testScene() {
   if (localScene.actions.length === 0 || scenesStore.executing) return
+  lastExecutionResult.value = null
   const result = await scenesStore.executeScene(localScene.id)
-  if (!result.success && result.error) alert(`执行失败: ${result.error}`)
-  else alert(`执行完成！成功 ${result.completedActions}/${result.totalActions} 个动作`)
+  lastExecutionResult.value = result
+}
+
+function cancelSceneExecution() {
+  scenesStore.cancelExecution()
+}
+
+function getExecutionLog(actionId: string): SceneActionExecutionLog | undefined {
+  return executionLogMap.value.get(actionId)
+}
+
+function getExecutionStatus(actionId: string): SceneActionExecutionStatus | 'none' {
+  return getExecutionLog(actionId)?.status || 'none'
+}
+
+function getExecutionStatusName(actionId: string): string {
+  const status = getExecutionStatus(actionId)
+  const names: Record<SceneActionExecutionStatus | 'none', string> = {
+    none: '',
+    pending: '等待',
+    running: '执行中',
+    success: '成功',
+    failed: '失败',
+    skipped: '跳过',
+    cancelled: '取消'
+  }
+  return names[status]
+}
+
+function getExecutionMessage(actionId: string): string {
+  const log = getExecutionLog(actionId)
+  if (!log) return ''
+  if (log.error) return log.error
+  if (log.message) return log.message
+  if (log.duration !== undefined) return `耗时 ${Math.max(1, Math.round(log.duration / 1000))} 秒`
+  return getExecutionStatusName(actionId)
 }
 
 function initSortable() {
@@ -448,7 +587,11 @@ watch(() => localScene.actions.length, () => {
   nextTick(initSortable)
 })
 
-watch(() => props.scene, (n) => Object.assign(localScene, { ...n, actions: [...n.actions] }), { deep: true })
+watch(() => props.scene, (n) => Object.assign(localScene, {
+  ...n,
+  failureStrategy: n.failureStrategy || 'continue',
+  actions: [...n.actions]
+}), { deep: true })
 onMounted(() => nextTick(initSortable))
 </script>
 
@@ -467,12 +610,23 @@ onMounted(() => nextTick(initSortable))
 .icon-option { width: 40px; height: 40px; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 20px; cursor: pointer; transition: all 0.2s; }
 .icon-option:hover { background: var(--bg-tertiary); transform: scale(1.1); }
 .icon-option.active { background: var(--primary-color); }
+.scene-options { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 14px 20px; border-bottom: 1px solid var(--border-color); background: var(--bg-primary); }
+.option-info { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.option-title { font-size: 13px; font-weight: 600; color: var(--text-primary); }
+.option-desc { font-size: 12px; color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.segmented-control { display: flex; flex-shrink: 0; padding: 3px; border-radius: 8px; background: var(--bg-secondary); border: 1px solid var(--border-color); }
+.segmented-control button { padding: 7px 10px; border-radius: 6px; font-size: 12px; color: var(--text-secondary); transition: all 0.2s; }
+.segmented-control button.active { background: var(--primary-color); color: white; }
 .actions-container { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
 .actions-header { display: flex; justify-content: space-between; align-items: center; padding: 16px 20px 8px; font-size: 13px; font-weight: 600; color: var(--text-secondary); text-transform: uppercase; }
 .actions-count { font-weight: 400; text-transform: none; }
 .actions-list { flex: 1; overflow-y: auto; padding: 8px 12px; min-height: 200px; max-height: 300px; }
-.action-item { display: flex; align-items: center; gap: 10px; padding: 12px; background: var(--bg-secondary); border-radius: 10px; margin-bottom: 8px; transition: all 0.2s; }
+.action-item { display: flex; align-items: center; gap: 10px; padding: 12px; background: var(--bg-secondary); border-radius: 10px; margin-bottom: 8px; border: 1px solid transparent; transition: all 0.2s; }
 .action-item:hover { background: var(--bg-tertiary); }
+.action-item.running { border-color: var(--primary-color); box-shadow: 0 0 0 2px rgba(0,122,255,0.12); }
+.action-item.status-success { border-color: rgba(52,199,89,0.45); }
+.action-item.status-failed { border-color: rgba(255,59,48,0.45); }
+.action-item.status-cancelled { opacity: 0.72; }
 .action-drag-handle { cursor: grab; color: var(--text-secondary); padding: 8px; margin: -8px; margin-right: 2px; }
 .action-drag-handle:hover { color: var(--text-primary); }
 .action-drag-handle:active { cursor: grabbing; }
@@ -480,8 +634,19 @@ onMounted(() => nextTick(initSortable))
 .action-content { flex: 1; min-width: 0; }
 .action-type { display: block; font-size: 14px; font-weight: 500; color: var(--text-primary); }
 .action-detail { display: block; font-size: 12px; color: var(--text-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.action-log { display: block; margin-top: 3px; font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-secondary); }
+.action-log.status-failed { color: var(--danger-color); }
+.action-log.status-success { color: #34c759; }
+.action-log.status-running { color: var(--primary-color); }
+.action-status { flex-shrink: 0; min-width: 42px; padding: 3px 6px; border-radius: 8px; font-size: 11px; font-weight: 600; text-align: center; background: var(--badge-bg); color: var(--text-secondary); }
+.action-status.status-running { background: rgba(0,122,255,0.12); color: var(--primary-color); }
+.action-status.status-success { background: rgba(52,199,89,0.12); color: #34c759; }
+.action-status.status-failed { background: rgba(255,59,48,0.12); color: var(--danger-color); }
+.action-status.status-skipped { background: rgba(255,149,0,0.14); color: #ff9500; }
+.action-status.status-cancelled { background: rgba(142,142,147,0.16); color: var(--text-secondary); }
 .action-delete { width: 28px; height: 28px; border-radius: 6px; display: flex; align-items: center; justify-content: center; color: var(--text-secondary); transition: all 0.2s; flex-shrink: 0; }
 .action-delete:hover { background: rgba(255,59,48,0.1); color: var(--danger-color); }
+.action-delete:disabled { opacity: 0.35; cursor: not-allowed; }
 .action-ghost { opacity: 0.4; background: var(--primary-color) !important; border-radius: 10px; }
 .action-chosen { background: var(--bg-tertiary) !important; box-shadow: 0 4px 12px rgba(0,0,0,0.15); transform: scale(1.02); }
 .action-drag { opacity: 0.9; }
@@ -489,14 +654,21 @@ onMounted(() => nextTick(initSortable))
 .empty-actions { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 40px 20px; color: var(--text-secondary); }
 .empty-actions p { margin: 12px 0 4px; font-size: 15px; font-weight: 500; }
 .empty-actions span { font-size: 13px; }
+.execution-panel { padding: 12px 20px 0; border-top: 1px solid var(--border-color); }
+.execution-summary { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; font-size: 12px; color: var(--text-secondary); }
+.execution-progress-track { height: 6px; border-radius: 999px; background: var(--bg-secondary); overflow: hidden; }
+.execution-progress-bar { height: 100%; border-radius: inherit; background: var(--primary-color); transition: width 0.2s ease; }
 .add-action-section { padding: 12px 20px; }
 .add-action-btn { width: 100%; display: flex; align-items: center; justify-content: center; gap: 8px; padding: 14px; border-radius: 10px; background: var(--bg-secondary); color: var(--primary-color); font-size: 14px; font-weight: 500; transition: all 0.2s; }
 .add-action-btn:hover { background: var(--primary-color); color: white; }
+.add-action-btn:disabled { opacity: 0.45; cursor: not-allowed; }
 .editor-footer { display: flex; gap: 12px; padding: 16px 20px; border-top: 1px solid var(--border-color); }
-.btn-test, .btn-done { flex: 1; display: flex; align-items: center; justify-content: center; gap: 6px; padding: 12px; border-radius: 8px; font-size: 14px; font-weight: 500; transition: all 0.2s; }
+.btn-test, .btn-done, .btn-cancel-execution { flex: 1; display: flex; align-items: center; justify-content: center; gap: 6px; padding: 12px; border-radius: 8px; font-size: 14px; font-weight: 500; transition: all 0.2s; }
 .btn-test { background: var(--bg-secondary); color: var(--text-primary); }
 .btn-test:hover:not(:disabled) { background: var(--bg-tertiary); }
 .btn-test:disabled { opacity: 0.5; cursor: not-allowed; }
+.btn-cancel-execution { background: rgba(255,59,48,0.12); color: var(--danger-color); }
+.btn-cancel-execution:hover { background: rgba(255,59,48,0.18); }
 .btn-done { background: var(--primary-color); color: white; }
 .btn-done:hover { background: var(--primary-hover); }
 .action-picker-overlay, .action-config-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; z-index: 1001; }

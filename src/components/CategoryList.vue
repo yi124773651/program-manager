@@ -83,6 +83,14 @@
             {{ scenesStore.executionProgress }}%
           </span>
           <span v-else class="scene-actions-count">{{ scene.actions.length }}</span>
+          <button
+            v-if="scenesStore.currentExecutingScene === scene.id"
+            class="scene-cancel-btn"
+            title="取消执行"
+            @click.stop="handleCancelScene"
+          >
+            <XCircleIcon :size="14" />
+          </button>
         </div>
         <div v-if="scenes.length === 0" class="empty-scenes">
           <span>点击 + 创建场景</span>
@@ -104,7 +112,7 @@
         <button class="github-link" @click="openGitHub" title="GitHub">
           <GithubIcon :size="18" />
         </button>
-        <span class="version-text">v1.1.0</span>
+        <span class="version-text">v1.1.4</span>
       </div>
     </div>
     </template>
@@ -153,6 +161,18 @@
           <Edit2Icon :size="14" />
           <span>编辑场景</span>
         </div>
+        <div class="menu-item" @click="handleDuplicateScene">
+          <CopyIcon :size="14" />
+          <span>复制场景</span>
+        </div>
+        <div class="menu-item" @click="handleExportScene">
+          <DownloadIcon :size="14" />
+          <span>导出场景</span>
+        </div>
+        <div class="menu-item" @click="handleImportScene">
+          <UploadIcon :size="14" />
+          <span>导入场景</span>
+        </div>
         <div class="menu-item danger" @click="handleDeleteScene">
           <TrashIcon :size="14" />
           <span>删除</span>
@@ -177,7 +197,7 @@
 import { computed, ref, onMounted, onUnmounted, nextTick } from 'vue'
 import { useAppStore } from '@/stores/appStore'
 import { useScenesStore } from '@/stores/scenesStore'
-import { FolderIcon, PlusIcon, Edit2Icon, TrashIcon, SettingsIcon, WrenchIcon, ClipboardListIcon, ZapIcon, GithubIcon } from 'lucide-vue-next'
+import { FolderIcon, PlusIcon, Edit2Icon, TrashIcon, SettingsIcon, WrenchIcon, ClipboardListIcon, ZapIcon, GithubIcon, CopyIcon, DownloadIcon, UploadIcon, XCircleIcon } from 'lucide-vue-next'
 import type { Category, Scene } from '@/types'
 import { SCENE_ICONS } from '@/types'
 import Sortable from 'sortablejs'
@@ -185,6 +205,8 @@ import SettingsDialog from './SettingsDialog.vue'
 import MaintenancePanel from './MaintenancePanel.vue'
 import ClipboardHistory from './ClipboardHistory.vue'
 import SceneEditor from './SceneEditor.vue'
+import { shellAdapter } from '@/adapters/shellAdapter'
+import { clipboardAdapter } from '@/adapters/clipboardAdapter'
 
 const appStore = useAppStore()
 const scenesStore = useScenesStore()
@@ -292,8 +314,8 @@ const handleDelete = async () => {
 // ============ 场景相关函数 ============
 
 // 初始化场景 store
-const initScenes = () => {
-  scenesStore.init()
+const initScenes = async () => {
+  await scenesStore.init()
 }
 
 // 新建场景
@@ -317,6 +339,11 @@ const handleAddScene = async () => {
 
 // 执行场景
 const handleExecuteScene = async (scene: Scene) => {
+  if (scenesStore.currentExecutingScene === scene.id) {
+    scenesStore.cancelExecution()
+    return
+  }
+
   if (scenesStore.executing) {
     alert('正在执行其他场景，请稍候...')
     return
@@ -367,6 +394,59 @@ const handleEditScene = () => {
   hideSceneContextMenu()
 }
 
+const handleDuplicateScene = () => {
+  const scene = sceneContextMenu.value.scene
+  if (!scene) return
+
+  const duplicated = scenesStore.duplicateScene(scene.id)
+  if (duplicated) {
+    editingScene.value = { ...duplicated, actions: [...duplicated.actions] }
+    showSceneEditor.value = true
+  }
+  hideSceneContextMenu()
+}
+
+const handleExportScene = async () => {
+  const scene = sceneContextMenu.value.scene
+  if (!scene) return
+
+  try {
+    const json = scenesStore.exportSceneJson(scene.id)
+    if (!json) {
+      alert('导出失败：场景不存在')
+      return
+    }
+    await clipboardAdapter.writeText(json)
+    alert('场景 JSON 已复制到剪贴板')
+  } catch (error) {
+    alert(`导出失败: ${error}`)
+  } finally {
+    hideSceneContextMenu()
+  }
+}
+
+const handleImportScene = () => {
+  const rawJson = prompt('请粘贴场景 JSON：')
+  if (!rawJson || !rawJson.trim()) {
+    hideSceneContextMenu()
+    return
+  }
+
+  try {
+    const imported = scenesStore.importSceneJson(rawJson.trim())
+    editingScene.value = { ...imported, actions: [...imported.actions] }
+    showSceneEditor.value = true
+  } catch (error) {
+    alert(`导入失败: ${error}`)
+  } finally {
+    hideSceneContextMenu()
+  }
+}
+
+const handleCancelScene = () => {
+  scenesStore.cancelExecution()
+}
+
 // 删除场景
 const handleDeleteScene = async () => {
   const scene = sceneContextMenu.value.scene
@@ -393,8 +473,7 @@ const closeSceneEditor = () => {
 
 // 打开 GitHub 仓库
 const openGitHub = async () => {
-  const { open } = await import('@tauri-apps/plugin-shell')
-  await open('https://github.com/yi124773651/program-manager')
+  await shellAdapter.open('https://github.com/yi124773651/program-manager')
 }
 
 // 初始化分类拖拽排序
@@ -513,10 +592,10 @@ const initSortable = () => {
   })
 }
 
-onMounted(() => {
+onMounted(async () => {
   document.addEventListener('click', hideContextMenu)
   document.addEventListener('click', hideSceneContextMenu)
-  initScenes()
+  await initScenes()
   nextTick(() => {
     initSortable()
   })
@@ -864,6 +943,23 @@ onUnmounted(() => {
   font-size: 11px;
   font-weight: 600;
   color: white;
+}
+
+.scene-cancel-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  color: white;
+  background: rgba(255, 255, 255, 0.18);
+  transition: all 0.2s;
+  flex-shrink: 0;
+}
+
+.scene-cancel-btn:hover {
+  background: rgba(255, 255, 255, 0.28);
 }
 
 .empty-scenes {

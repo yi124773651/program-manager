@@ -76,6 +76,7 @@ export interface AppSettings {
   calculatorEnabled?: boolean  // 计算器增强开关（在搜索框中使用）
   // 待办日程表
   todoScheduleEnabled?: boolean  // 待办日程表开关
+  todoShortcut?: string  // 待办日程表快捷键（默认 Alt+T）
 }
 
 // 完整配置
@@ -132,7 +133,8 @@ export const DEFAULT_CONFIG: Config = {
     // 计算器增强默认设置
     calculatorEnabled: true,
     // 待办日程表默认设置
-    todoScheduleEnabled: true
+    todoScheduleEnabled: true,
+    todoShortcut: 'Alt+T'
   }
 }
 
@@ -197,12 +199,34 @@ export interface SceneAction {
   }
 }
 
+export type SceneFailureStrategy = 'continue' | 'stop'
+
+export type SceneActionExecutionStatus =
+  | 'pending'
+  | 'running'
+  | 'success'
+  | 'failed'
+  | 'skipped'
+  | 'cancelled'
+
+export interface SceneActionExecutionLog {
+  actionId: string
+  actionType: SceneActionType
+  status: SceneActionExecutionStatus
+  startedAt?: number
+  endedAt?: number
+  duration?: number
+  message?: string
+  error?: string
+}
+
 // 场景
 export interface Scene {
   id: string
   name: string
   icon: string
   shortcut?: string  // 快捷键（可选）
+  failureStrategy?: SceneFailureStrategy
   actions: SceneAction[]
   createdAt: number
   updatedAt: number
@@ -405,4 +429,25 @@ export interface UpdateCheckResult {
     sizeChanged: boolean
     modifiedTimeChanged: boolean
   }
+}
+
+export type MaintenanceOperation = 'validation' | 'baseline' | 'update' | 'delete'
+
+export type MaintenanceProgressStatus = 'success' | 'failed' | 'warning' | 'skipped'
+
+export interface MaintenanceProgressEvent {
+  operation: MaintenanceOperation
+  appId?: string
+  appName?: string
+  total: number
+  completed: number
+  succeeded: number
+  failed: number
+  status: MaintenanceProgressStatus
+  message?: string
+}
+
+export interface MaintenanceLogEntry extends MaintenanceProgressEvent {
+  id: string
+  timestamp: number
 }

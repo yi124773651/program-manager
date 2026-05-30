@@ -79,7 +79,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch, nextTick } from 'vue'
+import { onBeforeUnmount, ref, watch, nextTick } from 'vue'
 import { useNotesStore, NOTE_COLORS } from '@/stores/notesStore'
 import { storeToRefs } from 'pinia'
 import {
@@ -126,6 +126,10 @@ watch(isOpen, async (open) => {
     await nextTick()
     textareaRef.value?.focus()
   }
+})
+
+onBeforeUnmount(() => {
+  void notesStore.flushPendingSave()
 })
 </script>
 

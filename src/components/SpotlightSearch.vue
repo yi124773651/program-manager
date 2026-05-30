@@ -11,7 +11,7 @@
               v-model="query"
               type="text"
               class="spotlight-input"
-              placeholder="搜索项目、剪贴板... (/ 网页, c: 剪贴板)"
+              placeholder="搜索项目、剪贴板、场景、便签、待办... (/ 网页, c:/n:/t:/s:)"
               @input="handleSearch"
               @keydown="handleKeydown"
             />
@@ -34,7 +34,7 @@
                 :key="result.id"
                 class="result-item calculator-result"
                 :class="{ selected: getGlobalIndex('calculator', index) === selectedIndex }"
-                @click="executeResult(result)"
+                @click="executeAndClose(result)"
                 @mouseenter="selectIndex(getGlobalIndex('calculator', index))"
               >
                 <div class="result-icon calculator">
@@ -61,7 +61,7 @@
                 :key="result.id"
                 class="result-item"
                 :class="{ selected: getGlobalIndex('app', index) === selectedIndex }"
-                @click="executeResult(result)"
+                @click="executeAndClose(result)"
                 @mouseenter="selectIndex(getGlobalIndex('app', index))"
               >
                 <div class="result-icon">
@@ -89,11 +89,92 @@
                 :key="result.id"
                 class="result-item"
                 :class="{ selected: getGlobalIndex('clipboard', index) === selectedIndex }"
-                @click="executeResult(result)"
+                @click="executeAndClose(result)"
                 @mouseenter="selectIndex(getGlobalIndex('clipboard', index))"
               >
                 <div class="result-icon clipboard">
                   <ClipboardIcon :size="20" />
+                </div>
+                <div class="result-content">
+                  <div class="result-title">{{ result.title }}</div>
+                  <div class="result-subtitle">{{ result.subtitle }}</div>
+                </div>
+                <div class="result-action">
+                  <CornerDownLeftIcon :size="14" />
+                </div>
+              </div>
+            </div>
+
+            <!-- 场景结果 -->
+            <div v-if="groupedResults.scene.length > 0" class="result-group">
+              <div class="group-label">
+                <PlayIcon :size="14" />
+                <span>场景</span>
+              </div>
+              <div
+                v-for="(result, index) in groupedResults.scene"
+                :key="result.id"
+                class="result-item"
+                :class="{ selected: getGlobalIndex('scene', index) === selectedIndex }"
+                @click="executeAndClose(result)"
+                @mouseenter="selectIndex(getGlobalIndex('scene', index))"
+              >
+                <div class="result-icon scene">
+                  <PlayIcon :size="20" />
+                </div>
+                <div class="result-content">
+                  <div class="result-title">{{ result.title }}</div>
+                  <div class="result-subtitle">{{ result.subtitle }}</div>
+                </div>
+                <div class="result-action">
+                  <CornerDownLeftIcon :size="14" />
+                </div>
+              </div>
+            </div>
+
+            <!-- 便签结果 -->
+            <div v-if="groupedResults.note.length > 0" class="result-group">
+              <div class="group-label">
+                <StickyNoteIcon :size="14" />
+                <span>便签</span>
+              </div>
+              <div
+                v-for="(result, index) in groupedResults.note"
+                :key="result.id"
+                class="result-item"
+                :class="{ selected: getGlobalIndex('note', index) === selectedIndex }"
+                @click="executeAndClose(result)"
+                @mouseenter="selectIndex(getGlobalIndex('note', index))"
+              >
+                <div class="result-icon note">
+                  <StickyNoteIcon :size="20" />
+                </div>
+                <div class="result-content">
+                  <div class="result-title">{{ result.title }}</div>
+                  <div class="result-subtitle">{{ result.subtitle }}</div>
+                </div>
+                <div class="result-action">
+                  <CornerDownLeftIcon :size="14" />
+                </div>
+              </div>
+            </div>
+
+            <!-- 待办结果 -->
+            <div v-if="groupedResults.todo.length > 0" class="result-group">
+              <div class="group-label">
+                <CalendarDaysIcon :size="14" />
+                <span>待办</span>
+              </div>
+              <div
+                v-for="(result, index) in groupedResults.todo"
+                :key="result.id"
+                class="result-item"
+                :class="{ selected: getGlobalIndex('todo', index) === selectedIndex }"
+                @click="executeAndClose(result)"
+                @mouseenter="selectIndex(getGlobalIndex('todo', index))"
+              >
+                <div class="result-icon todo">
+                  <CalendarDaysIcon :size="20" />
                 </div>
                 <div class="result-content">
                   <div class="result-title">{{ result.title }}</div>
@@ -116,7 +197,7 @@
                 :key="result.id"
                 class="result-item"
                 :class="{ selected: getGlobalIndex('web', index) === selectedIndex }"
-                @click="executeResult(result)"
+                @click="executeAndClose(result)"
                 @mouseenter="selectIndex(getGlobalIndex('web', index))"
               >
                 <div class="result-icon web">
@@ -137,7 +218,7 @@
           <div v-else-if="query && !isLoading" class="spotlight-empty">
             <SearchXIcon :size="32" />
             <p>没有找到匹配的结果</p>
-            <p class="hint">尝试使用 / 搜索网页，或 c: 搜索剪贴板</p>
+            <p class="hint">尝试使用 / 搜索网页，或 c:/n:/t:/s: 限定数据源</p>
           </div>
 
           <!-- 加载状态 -->
@@ -159,6 +240,18 @@
             <div class="tip-item">
               <kbd>c:</kbd>
               <span>剪贴板</span>
+            </div>
+            <div class="tip-item">
+              <kbd>n:</kbd>
+              <span>便签</span>
+            </div>
+            <div class="tip-item">
+              <kbd>t:</kbd>
+              <span>待办</span>
+            </div>
+            <div class="tip-item">
+              <kbd>s:</kbd>
+              <span>场景</span>
             </div>
             <div class="tip-item">
               <kbd>↑↓</kbd>
@@ -185,9 +278,13 @@ import {
   SearchXIcon,
   LoaderIcon,
   CalculatorIcon,
-  CopyIcon
+  CopyIcon,
+  StickyNoteIcon,
+  CalendarDaysIcon,
+  PlayIcon
 } from 'lucide-vue-next'
 import type { SearchResult, SearchResultType } from '@/types/search'
+import { SEARCH_RESULT_ORDER } from '@/services/searchService'
 
 const searchStore = useSearchStore()
 const { isOpen, query, results, selectedIndex, isLoading } = storeToRefs(searchStore)
@@ -202,6 +299,9 @@ const groupedResults = computed(() => {
     calculator: [],
     app: [],
     clipboard: [],
+    scene: [],
+    note: [],
+    todo: [],
     web: []
   }
   for (const result of results.value) {
@@ -213,9 +313,8 @@ const groupedResults = computed(() => {
 // 计算结果在扁平列表中的全局索引
 const getGlobalIndex = (type: SearchResultType, localIndex: number): number => {
   let offset = 0
-  const order: SearchResultType[] = ['calculator', 'app', 'clipboard', 'web']
 
-  for (const t of order) {
+  for (const t of SEARCH_RESULT_ORDER) {
     if (t === type) {
       return offset + localIndex
     }
@@ -226,6 +325,11 @@ const getGlobalIndex = (type: SearchResultType, localIndex: number): number => {
 
 const handleSearch = () => {
   search(query.value)
+}
+
+const executeAndClose = async (result: SearchResult) => {
+  await executeResult(result)
+  close()
 }
 
 const handleKeydown = (event: KeyboardEvent) => {
@@ -409,6 +513,21 @@ watch(isOpen, async (open) => {
   color: #ff9500;
 }
 
+.result-icon.scene {
+  background: rgba(255, 59, 48, 0.14);
+  color: #ff3b30;
+}
+
+.result-icon.note {
+  background: rgba(175, 82, 222, 0.14);
+  color: #af52de;
+}
+
+.result-icon.todo {
+  background: rgba(90, 200, 250, 0.16);
+  color: #007aff;
+}
+
 .calculator-value {
   font-size: 24px !important;
   font-weight: 600 !important;
@@ -471,8 +590,9 @@ watch(isOpen, async (open) => {
 
 .spotlight-tips {
   display: flex;
+  flex-wrap: wrap;
   justify-content: center;
-  gap: 24px;
+  gap: 12px 20px;
   padding: 16px 20px;
   border-top: 1px solid var(--border-color);
 }

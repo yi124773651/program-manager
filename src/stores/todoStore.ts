@@ -1,10 +1,14 @@
 import { defineStore } from 'pinia'
 import type { TodoInput, TodoItem } from '@/types/todo'
 import { getTodayDateKey } from '@/types/todo'
+import { persistenceService } from '@/services/persistenceService'
 
-const STORAGE_KEY = 'todo_schedule'
 type StoredTodoItem = Partial<TodoItem> & {
   time?: string
+}
+
+interface TodosStorage {
+  items?: StoredTodoItem[]
 }
 
 const normalizeTodoItem = (item: StoredTodoItem): TodoItem => ({
@@ -56,18 +60,16 @@ export const useTodoStore = defineStore('todoSchedule', {
   },
 
   actions: {
-    init() {
+    async init() {
       if (this.initialized) return
       this.selectedDate = getTodayDateKey()
-      this.loadFromStorage()
+      await this.loadFromStorage()
       this.initialized = true
     },
 
-    loadFromStorage() {
+    async loadFromStorage() {
       try {
-        const raw = localStorage.getItem(STORAGE_KEY)
-        if (!raw) return
-        const parsed = JSON.parse(raw) as { items?: StoredTodoItem[] }
+        const parsed = await persistenceService.load<TodosStorage>('todos', {})
         this.items = (parsed.items ?? []).map(normalizeTodoItem)
       } catch (error) {
         console.error('加载待办事项失败:', error)
@@ -75,8 +77,8 @@ export const useTodoStore = defineStore('todoSchedule', {
       }
     },
 
-    saveToStorage() {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify({ items: this.items }))
+    async saveToStorage() {
+      await persistenceService.save('todos', { items: this.items })
     },
 
     setSelectedDate(date: string) {
@@ -96,7 +98,7 @@ export const useTodoStore = defineStore('todoSchedule', {
         createdAt: now,
         updatedAt: now
       })
-      this.saveToStorage()
+      void this.saveToStorage()
     },
 
     updateTodo(id: string, patch: Partial<TodoInput>) {
@@ -109,7 +111,7 @@ export const useTodoStore = defineStore('todoSchedule', {
       target.endTime = patch.endTime || undefined
       target.description = patch.description?.trim() ?? target.description
       target.updatedAt = Date.now()
-      this.saveToStorage()
+      void this.saveToStorage()
     },
 
     toggleTodo(id: string) {
@@ -119,12 +121,12 @@ export const useTodoStore = defineStore('todoSchedule', {
       target.completed = !target.completed
       target.completedAt = target.completed ? Date.now() : undefined
       target.updatedAt = Date.now()
-      this.saveToStorage()
+      void this.saveToStorage()
     },
 
     deleteTodo(id: string) {
       this.items = this.items.filter((item) => item.id !== id)
-      this.saveToStorage()
+      void this.saveToStorage()
     },
 
     clearBeforeToday() {
@@ -134,7 +136,7 @@ export const useTodoStore = defineStore('todoSchedule', {
       const clearedCount = beforeCount - this.items.length
 
       if (clearedCount > 0) {
-        this.saveToStorage()
+        void this.saveToStorage()
       }
 
       return clearedCount

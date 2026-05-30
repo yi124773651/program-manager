@@ -113,6 +113,7 @@
               v-for="item in overdueTodos"
               :key="item.id"
               :item="item"
+              :highlighted="highlightedTodoId === item.id"
               @toggle="todoStore.toggleTodo(item.id)"
               @remove="todoStore.deleteTodo(item.id)"
               @save="todoStore.updateTodo(item.id, $event)"
@@ -126,6 +127,7 @@
               v-for="item in selectedDateTodos"
               :key="item.id"
               :item="item"
+              :highlighted="highlightedTodoId === item.id"
               @toggle="todoStore.toggleTodo(item.id)"
               @remove="todoStore.deleteTodo(item.id)"
               @save="todoStore.updateTodo(item.id, $event)"
@@ -141,6 +143,7 @@
                 v-for="item in completedTodos"
                 :key="item.id"
                 :item="item"
+                :highlighted="highlightedTodoId === item.id"
                 @toggle="todoStore.toggleTodo(item.id)"
                 @remove="todoStore.deleteTodo(item.id)"
                 @save="todoStore.updateTodo(item.id, $event)"
@@ -156,6 +159,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { invoke } from '@tauri-apps/api/core'
+import { listen, type UnlistenFn } from '@tauri-apps/api/event'
 import { getCurrentWindow } from '@tauri-apps/api/window'
 import { ask } from '@tauri-apps/plugin-dialog'
 import { storeToRefs } from 'pinia'
@@ -167,6 +171,8 @@ const weekdays = ['日', '一', '二', '三', '四', '五', '六']
 
 const todayKey = ref(getTodayDateKey())
 let midnightTimer: ReturnType<typeof setTimeout> | null = null
+let selectTodoUnlisten: UnlistenFn | null = null
+let highlightTimer: ReturnType<typeof setTimeout> | null = null
 
 const scheduleMidnightRefresh = () => {
   if (midnightTimer) clearTimeout(midnightTimer)
@@ -188,6 +194,7 @@ const closing = ref(false)
 const clearingHistory = ref(false)
 const formError = ref('')
 const historyMessage = ref('')
+const highlightedTodoId = ref<string | null>(null)
 const quickInputRef = ref<HTMLInputElement | null>(null)
 const form = ref<{ title: string; date: string; startTime: string; endTime: string; description: string }>({
   title: '',
@@ -305,6 +312,27 @@ const focusQuickAdd = () => {
   quickInputRef.value?.focus()
 }
 
+const selectTodoFromSearch = async (todoId: string, date: string) => {
+  const target = todoStore.items.find((item) => item.id === todoId)
+  todoStore.setSelectedDate(target?.date || date)
+
+  if (target?.completed) {
+    showCompleted.value = true
+  }
+
+  highlightedTodoId.value = todoId
+  if (highlightTimer) clearTimeout(highlightTimer)
+
+  await nextTick()
+  const targetElement = document.querySelector(`[data-todo-id="${todoId}"]`)
+  targetElement?.scrollIntoView({ block: 'center', behavior: 'smooth' })
+
+  highlightTimer = setTimeout(() => {
+    highlightedTodoId.value = null
+    highlightTimer = null
+  }, 1800)
+}
+
 const clearBeforeTodayRecords = async () => {
   if (!hasPastRecords.value || clearingHistory.value) return
 
@@ -369,16 +397,22 @@ watch(completedTodos, (items) => {
   }
 })
 
-onMounted(() => {
-  todoStore.init()
+onMounted(async () => {
+  await todoStore.init()
   syncFormDate()
   quickInputRef.value?.focus()
   document.addEventListener('keydown', handleKeydown)
+
+  selectTodoUnlisten = await listen<{ todoId: string; date: string }>('select-todo', async (event) => {
+    await selectTodoFromSearch(event.payload.todoId, event.payload.date)
+  })
 })
 
 onBeforeUnmount(() => {
   document.removeEventListener('keydown', handleKeydown)
+  selectTodoUnlisten?.()
   if (midnightTimer) clearTimeout(midnightTimer)
+  if (highlightTimer) clearTimeout(highlightTimer)
 })
 </script>
 

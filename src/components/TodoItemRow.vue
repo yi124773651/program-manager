@@ -1,5 +1,5 @@
 <template>
-  <article class="todo-row">
+  <article class="todo-row" :class="{ highlighted }" :data-todo-id="item.id">
     <label class="toggle-wrap">
       <input type="checkbox" :checked="item.completed" @change="$emit('toggle')" />
     </label>
@@ -36,6 +36,7 @@ import type { TodoInput, TodoItem } from '@/types/todo'
 
 const props = defineProps<{
   item: TodoItem
+  highlighted?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -97,6 +98,11 @@ const save = () => {
   border: 1px solid var(--border-color);
   border-radius: 10px;
   background: var(--bg-primary);
+}
+
+.todo-row.highlighted {
+  border-color: var(--primary-color);
+  box-shadow: 0 0 0 2px rgba(0, 122, 255, 0.18);
 }
 
 .toggle-wrap {

@@ -4,16 +4,16 @@ use std::fs;
 /// 提取图标并保存到文件，返回图标文件名
 #[cfg(target_os = "windows")]
 pub fn extract_icon_to_file(exe_path: &str, app_id: &str) -> Result<String, String> {
-    use std::os::windows::ffi::OsStrExt;
     use std::ffi::OsStr;
-    use windows::Win32::UI::Shell::ExtractIconW;
-    use windows::Win32::UI::WindowsAndMessaging::{GetIconInfo, DestroyIcon, ICONINFO};
-    use windows::Win32::Graphics::Gdi::{
-        GetDIBits, GetObjectW, BITMAPINFO, BITMAPINFOHEADER, BI_RGB,
-        DeleteObject, CreateCompatibleDC, DeleteDC, DIB_RGB_COLORS, BITMAP
-    };
-    use windows::Win32::Foundation::HINSTANCE;
+    use std::os::windows::ffi::OsStrExt;
     use windows::core::PWSTR;
+    use windows::Win32::Foundation::HINSTANCE;
+    use windows::Win32::Graphics::Gdi::{
+        CreateCompatibleDC, DeleteDC, DeleteObject, GetDIBits, GetObjectW, BITMAP, BITMAPINFO,
+        BITMAPINFOHEADER, BI_RGB, DIB_RGB_COLORS,
+    };
+    use windows::Win32::UI::Shell::ExtractIconW;
+    use windows::Win32::UI::WindowsAndMessaging::{DestroyIcon, GetIconInfo, ICONINFO};
 
     // 将路径转换为 UTF-16
     let path_wide: Vec<u16> = OsStr::new(exe_path)
@@ -26,7 +26,7 @@ pub fn extract_icon_to_file(exe_path: &str, app_id: &str) -> Result<String, Stri
         let hicon = ExtractIconW(
             HINSTANCE::default(),
             PWSTR(path_wide.as_ptr() as *mut u16),
-            0
+            0,
         );
 
         if hicon.is_invalid() {
@@ -45,7 +45,7 @@ pub fn extract_icon_to_file(exe_path: &str, app_id: &str) -> Result<String, Stri
         GetObjectW(
             icon_info.hbmColor,
             std::mem::size_of::<BITMAP>() as i32,
-            Some(&mut bm as *mut _ as *mut _)
+            Some(&mut bm as *mut _ as *mut _),
         );
 
         let width = bm.bmWidth.abs() as u32;
@@ -85,7 +85,7 @@ pub fn extract_icon_to_file(exe_path: &str, app_id: &str) -> Result<String, Stri
             height,
             Some(pixels.as_mut_ptr() as *mut _),
             &mut bmp_info,
-            DIB_RGB_COLORS
+            DIB_RGB_COLORS,
         );
 
         // 如果获取失败
@@ -106,7 +106,7 @@ pub fn extract_icon_to_file(exe_path: &str, app_id: &str) -> Result<String, Stri
             height,
             Some(mask_pixels.as_mut_ptr() as *mut _),
             &mut bmp_info,
-            DIB_RGB_COLORS
+            DIB_RGB_COLORS,
         );
 
         // 转换 BGRA 到 RGBA，并应用 alpha 通道
@@ -134,15 +134,17 @@ pub fn extract_icon_to_file(exe_path: &str, app_id: &str) -> Result<String, Stri
 
         // 编码为 PNG
         let mut png_data: Vec<u8> = Vec::new();
-        img.write_to(&mut std::io::Cursor::new(&mut png_data), image::ImageFormat::Png)
-            .map_err(|e| format!("Failed to encode PNG: {}", e))?;
+        img.write_to(
+            &mut std::io::Cursor::new(&mut png_data),
+            image::ImageFormat::Png,
+        )
+        .map_err(|e| format!("Failed to encode PNG: {}", e))?;
 
         // 保存到文件
         let icon_filename = format!("{}.png", app_id);
         let icon_path = crate::utils::config::get_icon_path(&icon_filename);
 
-        fs::write(&icon_path, &png_data)
-            .map_err(|e| format!("Failed to save icon: {}", e))?;
+        fs::write(&icon_path, &png_data).map_err(|e| format!("Failed to save icon: {}", e))?;
 
         Ok(icon_filename)
     }
@@ -156,16 +158,16 @@ pub fn extract_icon_to_file(_exe_path: &str, _app_id: &str) -> Result<String, St
 /// 兼容旧接口：提取图标并返回 base64（已弃用，仅用于兼容）
 #[cfg(target_os = "windows")]
 pub fn extract_icon_from_exe(exe_path: &str) -> Result<String, String> {
-    use std::os::windows::ffi::OsStrExt;
     use std::ffi::OsStr;
-    use windows::Win32::UI::Shell::ExtractIconW;
-    use windows::Win32::UI::WindowsAndMessaging::{GetIconInfo, DestroyIcon, ICONINFO};
-    use windows::Win32::Graphics::Gdi::{
-        GetDIBits, GetObjectW, BITMAPINFO, BITMAPINFOHEADER, BI_RGB,
-        DeleteObject, CreateCompatibleDC, DeleteDC, DIB_RGB_COLORS, BITMAP
-    };
-    use windows::Win32::Foundation::HINSTANCE;
+    use std::os::windows::ffi::OsStrExt;
     use windows::core::PWSTR;
+    use windows::Win32::Foundation::HINSTANCE;
+    use windows::Win32::Graphics::Gdi::{
+        CreateCompatibleDC, DeleteDC, DeleteObject, GetDIBits, GetObjectW, BITMAP, BITMAPINFO,
+        BITMAPINFOHEADER, BI_RGB, DIB_RGB_COLORS,
+    };
+    use windows::Win32::UI::Shell::ExtractIconW;
+    use windows::Win32::UI::WindowsAndMessaging::{DestroyIcon, GetIconInfo, ICONINFO};
 
     // 将路径转换为 UTF-16
     let path_wide: Vec<u16> = OsStr::new(exe_path)
@@ -178,7 +180,7 @@ pub fn extract_icon_from_exe(exe_path: &str) -> Result<String, String> {
         let hicon = ExtractIconW(
             HINSTANCE::default(),
             PWSTR(path_wide.as_ptr() as *mut u16),
-            0
+            0,
         );
 
         if hicon.is_invalid() {
@@ -197,7 +199,7 @@ pub fn extract_icon_from_exe(exe_path: &str) -> Result<String, String> {
         GetObjectW(
             icon_info.hbmColor,
             std::mem::size_of::<BITMAP>() as i32,
-            Some(&mut bm as *mut _ as *mut _)
+            Some(&mut bm as *mut _ as *mut _),
         );
 
         let width = bm.bmWidth.abs() as u32;
@@ -237,7 +239,7 @@ pub fn extract_icon_from_exe(exe_path: &str) -> Result<String, String> {
             height,
             Some(pixels.as_mut_ptr() as *mut _),
             &mut bmp_info,
-            DIB_RGB_COLORS
+            DIB_RGB_COLORS,
         );
 
         // 如果获取失败，尝试获取遮罩位图
@@ -258,7 +260,7 @@ pub fn extract_icon_from_exe(exe_path: &str) -> Result<String, String> {
             height,
             Some(mask_pixels.as_mut_ptr() as *mut _),
             &mut bmp_info,
-            DIB_RGB_COLORS
+            DIB_RGB_COLORS,
         );
 
         // 转换 BGRA 到 RGBA，并应用 alpha 通道
@@ -286,8 +288,11 @@ pub fn extract_icon_from_exe(exe_path: &str) -> Result<String, String> {
 
         // 编码为 PNG
         let mut png_data: Vec<u8> = Vec::new();
-        img.write_to(&mut std::io::Cursor::new(&mut png_data), image::ImageFormat::Png)
-            .map_err(|e| format!("Failed to encode PNG: {}", e))?;
+        img.write_to(
+            &mut std::io::Cursor::new(&mut png_data),
+            image::ImageFormat::Png,
+        )
+        .map_err(|e| format!("Failed to encode PNG: {}", e))?;
 
         // 转换为 base64
         use base64::Engine;
@@ -308,15 +313,11 @@ fn get_placeholder_icon() -> String {
 
     // 1x1 透明 PNG 的字节数据
     let png_bytes = vec![
-        0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A,
-        0x00, 0x00, 0x00, 0x0D, 0x49, 0x48, 0x44, 0x52,
-        0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01,
-        0x08, 0x06, 0x00, 0x00, 0x00, 0x1F, 0x15, 0xC4,
-        0x89, 0x00, 0x00, 0x00, 0x0A, 0x49, 0x44, 0x41,
-        0x54, 0x78, 0x9C, 0x63, 0x00, 0x01, 0x00, 0x00,
-        0x05, 0x00, 0x01, 0x0D, 0x0A, 0x2D, 0xB4, 0x00,
-        0x00, 0x00, 0x00, 0x49, 0x45, 0x4E, 0x44, 0xAE,
-        0x42, 0x60, 0x82,
+        0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0x00, 0x00, 0x00, 0x0D, 0x49, 0x48, 0x44,
+        0x52, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01, 0x08, 0x06, 0x00, 0x00, 0x00, 0x1F,
+        0x15, 0xC4, 0x89, 0x00, 0x00, 0x00, 0x0A, 0x49, 0x44, 0x41, 0x54, 0x78, 0x9C, 0x63, 0x00,
+        0x01, 0x00, 0x00, 0x05, 0x00, 0x01, 0x0D, 0x0A, 0x2D, 0xB4, 0x00, 0x00, 0x00, 0x00, 0x49,
+        0x45, 0x4E, 0x44, 0xAE, 0x42, 0x60, 0x82,
     ];
 
     format!(
