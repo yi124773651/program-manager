@@ -112,7 +112,7 @@
         <button class="github-link" @click="openGitHub" title="GitHub">
           <GithubIcon :size="18" />
         </button>
-        <span class="version-text">v1.1.4</span>
+        <span class="version-text">v1.1.7</span>
       </div>
     </div>
     </template>
@@ -130,55 +130,59 @@
       </Transition>
     </Teleport>
 
-    <!-- 右键菜单 -->
-    <Transition name="fade">
-      <div
-        v-if="contextMenu.show"
-        class="context-menu"
-        :style="{ left: contextMenu.x + 'px', top: contextMenu.y + 'px' }"
-        @click.stop
-      >
-        <div class="menu-item" @click="handleRename">
-          <Edit2Icon :size="14" />
-          <span>重命名</span>
+    <!-- 右键菜单 - Teleport 到 body 避免被 backdrop-filter 容器裁剪 -->
+    <Teleport to="body">
+      <Transition name="fade">
+        <div
+          v-if="contextMenu.show"
+          class="context-menu"
+          :style="{ left: contextMenu.x + 'px', top: contextMenu.y + 'px' }"
+          @click.stop
+        >
+          <div class="menu-item" @click="handleRename">
+            <Edit2Icon :size="14" />
+            <span>重命名</span>
+          </div>
+          <div class="menu-item danger" @click="handleDelete">
+            <TrashIcon :size="14" />
+            <span>删除</span>
+          </div>
         </div>
-        <div class="menu-item danger" @click="handleDelete">
-          <TrashIcon :size="14" />
-          <span>删除</span>
-        </div>
-      </div>
-    </Transition>
+      </Transition>
+    </Teleport>
 
     <!-- 场景右键菜单 -->
-    <Transition name="fade">
-      <div
-        v-if="sceneContextMenu.show"
-        class="context-menu"
-        :style="{ left: sceneContextMenu.x + 'px', top: sceneContextMenu.y + 'px' }"
-        @click.stop
-      >
-        <div class="menu-item" @click="handleEditScene">
-          <Edit2Icon :size="14" />
-          <span>编辑场景</span>
+    <Teleport to="body">
+      <Transition name="fade">
+        <div
+          v-if="sceneContextMenu.show"
+          class="context-menu"
+          :style="{ left: sceneContextMenu.x + 'px', top: sceneContextMenu.y + 'px' }"
+          @click.stop
+        >
+          <div class="menu-item" @click="handleEditScene">
+            <Edit2Icon :size="14" />
+            <span>编辑场景</span>
+          </div>
+          <div class="menu-item" @click="handleDuplicateScene">
+            <CopyIcon :size="14" />
+            <span>复制场景</span>
+          </div>
+          <div class="menu-item" @click="handleExportScene">
+            <DownloadIcon :size="14" />
+            <span>导出场景</span>
+          </div>
+          <div class="menu-item" @click="handleImportScene">
+            <UploadIcon :size="14" />
+            <span>导入场景</span>
+          </div>
+          <div class="menu-item danger" @click="handleDeleteScene">
+            <TrashIcon :size="14" />
+            <span>删除</span>
+          </div>
         </div>
-        <div class="menu-item" @click="handleDuplicateScene">
-          <CopyIcon :size="14" />
-          <span>复制场景</span>
-        </div>
-        <div class="menu-item" @click="handleExportScene">
-          <DownloadIcon :size="14" />
-          <span>导出场景</span>
-        </div>
-        <div class="menu-item" @click="handleImportScene">
-          <UploadIcon :size="14" />
-          <span>导入场景</span>
-        </div>
-        <div class="menu-item danger" @click="handleDeleteScene">
-          <TrashIcon :size="14" />
-          <span>删除</span>
-        </div>
-      </div>
-    </Transition>
+      </Transition>
+    </Teleport>
 
     <!-- 场景编辑器 -->
     <Teleport to="body">
@@ -264,10 +268,14 @@ const handleAddCategory = () => {
 }
 
 const showContextMenu = (event: MouseEvent, category: Category) => {
+  const menuHeight = 80
+  const menuWidth = 160
+  const y = Math.min(event.clientY, window.innerHeight - menuHeight)
+  const x = Math.min(event.clientX, window.innerWidth - menuWidth)
   contextMenu.value = {
     show: true,
-    x: event.clientX,
-    y: event.clientY,
+    x,
+    y,
     category
   }
 }
@@ -367,10 +375,14 @@ const handleExecuteScene = async (scene: Scene) => {
 
 // 显示场景右键菜单
 const showSceneContextMenu = (event: MouseEvent, scene: Scene) => {
+  const menuHeight = 200
+  const menuWidth = 160
+  const y = Math.min(event.clientY, window.innerHeight - menuHeight)
+  const x = Math.min(event.clientX, window.innerWidth - menuWidth)
   sceneContextMenu.value = {
     show: true,
-    x: event.clientX,
-    y: event.clientY,
+    x,
+    y,
     scene
   }
 }
@@ -821,41 +833,6 @@ onUnmounted(() => {
   transform: translateY(-2px);
 }
 
-.context-menu {
-  position: fixed;
-  background: var(--glass-bg);
-  backdrop-filter: var(--backdrop-blur);
-  -webkit-backdrop-filter: var(--backdrop-blur);
-  border: 1px solid var(--glass-border);
-  border-radius: 12px;
-  box-shadow: var(--shadow-xl);
-  padding: 6px;
-  z-index: 1000;
-  min-width: 140px;
-}
-
-.menu-item {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 12px;
-  border-radius: 4px;
-  cursor: pointer;
-  transition: background 0.15s;
-  font-size: 13px;
-}
-
-.menu-item:hover {
-  background: var(--menu-item-hover);
-}
-
-.menu-item.danger {
-  color: var(--danger-color);
-}
-
-.menu-item.danger:hover {
-  background: rgba(255, 59, 48, 0.1);
-}
 
 /* ============ 场景面板样式 ============ */
 .scenes-section {
@@ -1037,5 +1014,43 @@ onUnmounted(() => {
   font-size: 11px;
   color: var(--text-secondary);
   opacity: 0.7;
+}
+</style>
+
+<style>
+.context-menu {
+  position: fixed;
+  background: var(--glass-bg);
+  backdrop-filter: var(--backdrop-blur);
+  -webkit-backdrop-filter: var(--backdrop-blur);
+  border: 1px solid var(--glass-border);
+  border-radius: 12px;
+  box-shadow: var(--shadow-xl);
+  padding: 6px;
+  z-index: 10000;
+  min-width: 140px;
+}
+
+.context-menu .menu-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background 0.15s;
+  font-size: 13px;
+}
+
+.context-menu .menu-item:hover {
+  background: var(--menu-item-hover);
+}
+
+.context-menu .menu-item.danger {
+  color: var(--danger-color);
+}
+
+.context-menu .menu-item.danger:hover {
+  background: rgba(255, 59, 48, 0.1);
 }
 </style>

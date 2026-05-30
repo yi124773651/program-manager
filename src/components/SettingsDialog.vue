@@ -568,7 +568,7 @@
             <h3>关于</h3>
           </div>
           <div class="about-info">
-            <p><strong>程序管理器</strong> v1.1.5</p>
+            <p><strong>程序管理器</strong> v1.1.7</p>
             <p class="about-desc">一个现代化的 Windows 程序管理工具</p>
           </div>
         </section>
