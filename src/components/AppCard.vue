@@ -30,6 +30,7 @@
     <Transition name="fade">
       <div
         v-if="showMenu"
+        ref="menuRef"
         class="context-menu"
         :style="menuStyle"
         @click.stop
@@ -129,7 +130,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
+import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue'
 import { useAppStore } from '@/stores/appStore'
 import { useActionsStore } from '@/stores/actionsStore'
 import {
@@ -170,6 +171,7 @@ const actionsStore = useActionsStore()
 const showMenu = ref(false)
 const showActionsManager = ref(false)
 const menuStyle = ref({})
+const menuRef = ref<HTMLElement | null>(null)
 const iconError = ref(false)
 
 // 图标 URL（从缓存或异步加载）
@@ -286,18 +288,38 @@ const handleLaunch = async () => {
   }
 }
 
-const showContextMenu = (event: MouseEvent) => {
+const showContextMenu = async (event: MouseEvent) => {
   event.preventDefault()
   event.stopPropagation()
+
+  // 先按鼠标位置定位并显示菜单
+  menuStyle.value = {
+    left: `${event.clientX}px`,
+    top: `${event.clientY}px`,
+  }
   showMenu.value = true
 
   // 只在菜单显示时添加全局监听器
   document.addEventListener('click', handleClickOutside)
 
-  menuStyle.value = {
-    left: `${event.clientX}px`,
-    top: `${event.clientY}px`,
+  // 菜单项数量可变（动作数量不定），渲染后按实际尺寸做边界翻转，避免被窗口边缘截断
+  await nextTick()
+  const menuEl = menuRef.value
+  if (!menuEl) return
+
+  const margin = 8
+  const { offsetWidth: menuWidth, offsetHeight: menuHeight } = menuEl
+  let x = event.clientX
+  let y = event.clientY
+
+  if (x + menuWidth > window.innerWidth - margin) {
+    x = Math.max(margin, window.innerWidth - menuWidth - margin)
   }
+  if (y + menuHeight > window.innerHeight - margin) {
+    y = Math.max(margin, window.innerHeight - menuHeight - margin)
+  }
+
+  menuStyle.value = { left: `${x}px`, top: `${y}px` }
 }
 
 const hideMenu = () => {
