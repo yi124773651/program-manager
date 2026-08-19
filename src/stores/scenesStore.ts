@@ -1,10 +1,12 @@
 import { defineStore } from 'pinia'
 import { invoke } from '@tauri-apps/api/core'
 import { useAppStore } from './appStore'
+import { useActionsStore } from './actionsStore'
 import type { Scene, SceneAction, SceneActionExecutionLog, SceneFailureStrategy } from '@/types'
 import { canUseProcessActions } from '@/types'
 import { getSceneActionName } from '@/services/sceneActionRegistry'
 import { sceneService } from '@/services/sceneService'
+import { ask } from '@tauri-apps/plugin-dialog'
 
 export const useScenesStore = defineStore('scenes', {
   state: () => ({
@@ -127,7 +129,7 @@ export const useScenesStore = defineStore('scenes', {
     },
 
     // 执行启动后的附属操作（等待窗口、发送按键、延迟）
-    async executeLaunchOptions(action: SceneAction, processName: string): Promise<{ success: boolean; error?: string }> {
+    async executeLaunchOptions(action: SceneAction, processName: string, confirmed = false): Promise<{ success: boolean; error?: string }> {
       // 等待窗口出现
       if (action.params.waitWindow) {
         const timeout = action.params.waitTimeout || 30
@@ -143,29 +145,12 @@ export const useScenesStore = defineStore('scenes', {
       // 发送按键
       if (action.params.sendKeys) {
         // 先激活窗口
-        await invoke('execute_action_template', {
-          scriptContent: `
-$process = Get-Process -Name "${processName}" -ErrorAction SilentlyContinue | Select-Object -First 1
-if ($process) {
-  $hwnd = $process.MainWindowHandle
-  if ($hwnd -ne [IntPtr]::Zero) {
-    Add-Type @"
-    using System;
-    using System.Runtime.InteropServices;
-    public class WindowHelper {
-      [DllImport("user32.dll")]
-      public static extern bool SetForegroundWindow(IntPtr hWnd);
-    }
-"@
-    [WindowHelper]::SetForegroundWindow($hwnd)
-    Start-Sleep -Milliseconds 200
-  }
-}`,
-          appPath: '',
-          appName: ''
-        })
+        const activated = await invoke<boolean>('activate_process_window', { processName })
+        if (!activated) {
+          return { success: false, error: '无法激活程序窗口' }
+        }
         // 发送按键
-        await invoke('send_keys', { keys: action.params.sendKeys })
+        await invoke('send_keys', { keys: action.params.sendKeys, confirmed })
       }
 
       // 启动后延迟
@@ -177,10 +162,49 @@ if ($process) {
     },
 
     // 执行单个动作
-    async executeAction(action: SceneAction): Promise<{ success: boolean; error?: string; skipped?: boolean; cancelled?: boolean }> {
+    async executeAction(action: SceneAction): Promise<{
+      success: boolean
+      error?: string
+      output?: string
+      exitCode?: number
+      target?: string
+      confirmed?: boolean
+      skipped?: boolean
+      cancelled?: boolean
+    }> {
       const appStore = useAppStore()
 
       try {
+        if (action.disabled) {
+          return {
+            success: true,
+            skipped: true,
+            confirmed: false,
+            target: action.legacyType || action.type,
+            output: action.disabledReason || '动作已禁用'
+          }
+        }
+
+        const needsConfirmation = action.type === 'launch_admin' || action.type === 'close_app' ||
+          (action.type === 'launch' && Boolean(action.params.sendKeys))
+        let confirmed = false
+        if (needsConfirmation) {
+          const target = action.params.appId
+            ? (appStore.config.apps[action.params.appId]?.name || action.params.appId)
+            : (action.params.processName || '目标程序')
+          const title = action.type === 'launch_admin' ? '确认管理员启动' :
+            action.type === 'close_app' ? '确认结束进程' : '确认发送按键'
+          const message = action.type === 'launch_admin'
+            ? `场景将请求以管理员权限启动“${target}”，是否继续？`
+            : action.type === 'close_app'
+              ? `场景将强制结束“${target}”的全部进程，是否继续？`
+              : `场景将向“${target}”窗口发送预设按键，是否继续？`
+          confirmed = await ask(message, { title, kind: 'warning', okLabel: '继续', cancelLabel: '取消' })
+          if (!confirmed) {
+            return { success: false, error: '用户取消高风险动作', cancelled: true, confirmed: false, target }
+          }
+        }
+
         switch (action.type) {
           case 'launch': {
             if (!action.params.appId) {
@@ -197,20 +221,20 @@ if ($process) {
               if (isRunning) {
                 // 已运行但有发送按键，则激活窗口并发送
                 if (action.params.sendKeys) {
-                  await this.executeLaunchOptions(action, processName)
+                  await this.executeLaunchOptions(action, processName, confirmed)
                 }
-                return { success: true, skipped: true }
+                return { success: true, skipped: true, confirmed, target: app.name, output: '进程已运行，已跳过', exitCode: 0 }
               }
             }
             await appStore.launchApp(action.params.appId)
             // 执行附属操作
             if (processName && (action.params.waitWindow || action.params.sendKeys)) {
-              const result = await this.executeLaunchOptions(action, processName)
+              const result = await this.executeLaunchOptions(action, processName, confirmed)
               if (!result.success) {
                 return result
               }
             }
-            return { success: true }
+            return { success: true, confirmed, target: app.name, output: '已启动程序', exitCode: 0 }
           }
 
           case 'launch_admin': {
@@ -228,60 +252,44 @@ if ($process) {
               if (isRunning) {
                 // 已运行但有发送按键，则激活窗口并发送
                 if (action.params.sendKeys) {
-                  await this.executeLaunchOptions(action, processName)
+                  await this.executeLaunchOptions(action, processName, confirmed)
                 }
-                return { success: true, skipped: true }
+                return { success: true, skipped: true, confirmed, target: app.name, output: '进程已运行，已跳过', exitCode: 0 }
               }
             }
-            await invoke('execute_action_template', {
-              scriptContent: 'Start-Process -FilePath $env:APP_PATH -Verb RunAs',
-              appPath: app.path,
-              appName: app.name
-            })
+            await invoke('launch_app_as_admin', { appPath: app.path, confirmed })
             // 执行附属操作
             if (processName && (action.params.waitWindow || action.params.sendKeys)) {
-              const result = await this.executeLaunchOptions(action, processName)
+              const result = await this.executeLaunchOptions(action, processName, confirmed)
               if (!result.success) {
                 return result
               }
             }
-            return { success: true }
+            return { success: true, confirmed, target: app.name, output: '已请求管理员启动', exitCode: 0 }
           }
 
           case 'open_url': {
             if (!action.params.url) {
               return { success: false, error: '未指定网址' }
             }
-            await invoke('execute_action_template', {
-              scriptContent: `Start-Process "${action.params.url}"`,
-              appPath: '',
-              appName: ''
-            })
-            return { success: true }
+            await invoke('open_url', { url: action.params.url })
+            return { success: true, target: action.params.url, output: '已打开网址', exitCode: 0 }
           }
 
           case 'open_folder': {
             if (!action.params.path) {
               return { success: false, error: '未指定文件夹路径' }
             }
-            await invoke('execute_action_template', {
-              scriptContent: `Start-Process explorer "${action.params.path}"`,
-              appPath: '',
-              appName: ''
-            })
-            return { success: true }
+            await invoke('open_folder', { path: action.params.path })
+            return { success: true, target: action.params.path, output: '已打开文件夹', exitCode: 0 }
           }
 
           case 'open_file': {
             if (!action.params.path) {
               return { success: false, error: '未指定文件路径' }
             }
-            await invoke('execute_action_template', {
-              scriptContent: `Start-Process "${action.params.path}"`,
-              appPath: '',
-              appName: ''
-            })
-            return { success: true }
+            await invoke('open_file', { path: action.params.path })
+            return { success: true, target: action.params.path, output: '已打开文件', exitCode: 0 }
           }
 
           case 'close_app': {
@@ -301,16 +309,23 @@ if ($process) {
             // 智能关闭：检查进程是否正在运行
             const isRunning = await invoke<boolean>('is_process_running', { processName })
             if (!isRunning) {
-              return { success: true, skipped: true }
+              return { success: true, skipped: true, confirmed, target: processName, output: '进程未运行，已跳过', exitCode: 0 }
             }
 
-            await invoke('execute_action_template', {
-              scriptContent: `$ps = Get-Process -Name "${processName}" -ErrorAction SilentlyContinue
-if ($ps) { $ps | Stop-Process -Force }`,
-              appPath: '',
-              appName: ''
-            })
-            return { success: true }
+            const result = await invoke<{
+              success: boolean
+              output?: string
+              errorOutput?: string
+              exitCode?: number
+            }>('close_process', { processName, confirmed })
+            return {
+              success: result.success,
+              confirmed,
+              target: processName,
+              output: result?.output || '已请求结束进程',
+              error: result.success ? undefined : (result.errorOutput || '结束进程失败'),
+              exitCode: result?.exitCode ?? -1
+            }
           }
 
           case 'delay': {
@@ -319,46 +334,28 @@ if ($ps) { $ps | Stop-Process -Force }`,
             if (!completed) {
               return { success: false, cancelled: true, error: '用户取消执行' }
             }
-            return { success: true }
+            return { success: true, output: `已等待 ${seconds} 秒`, exitCode: 0 }
           }
 
           case 'notify': {
             const message = action.params.message || '场景执行完成'
-            // 使用 PowerShell 发送 Windows Toast 通知
             try {
-              await invoke('execute_action_template', {
-                scriptContent: `
-[Windows.UI.Notifications.ToastNotificationManager, Windows.UI.Notifications, ContentType = WindowsRuntime] | Out-Null
-[Windows.Data.Xml.Dom.XmlDocument, Windows.Data.Xml.Dom.XmlDocument, ContentType = WindowsRuntime] | Out-Null
-$template = @"
-<toast>
-  <visual>
-    <binding template="ToastText02">
-      <text id="1">程序管理器</text>
-      <text id="2">${message}</text>
-    </binding>
-  </visual>
-</toast>
-"@
-$xml = New-Object Windows.Data.Xml.Dom.XmlDocument
-$xml.LoadXml($template)
-$toast = [Windows.UI.Notifications.ToastNotification]::new($xml)
-[Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier("程序管理器").Show($toast)
-`,
-                appPath: '',
-                appName: ''
+              await invoke('show_notification', {
+                title: '程序管理器',
+                body: message
               })
-            } catch {
+            } catch (error) {
               console.log('通知:', message)
+              return { success: false, error: String(error) }
             }
-            return { success: true }
+            return { success: true, target: message, output: '已发送通知', exitCode: 0 }
           }
 
           default:
             return { success: false, error: '未知的动作类型' }
         }
       } catch (error) {
-        return { success: false, error: String(error) }
+        return { success: false, error: String(error), exitCode: -1 }
       }
     },
 
@@ -451,12 +448,31 @@ $toast = [Windows.UI.Notifications.ToastNotification]::new($xml)
           const result = await this.executeAction(action)
           const endedAt = Date.now()
 
+          const auditStore = useActionsStore()
+          void auditStore.recordAudit({
+            source: 'scene',
+            actionId: action.id,
+            actionType: action.type,
+            target: result.target,
+            status: result.cancelled ? 'cancelled' : result.skipped ? 'skipped' : result.success ? 'success' : 'failed',
+            confirmed: result.confirmed === true,
+            startedAt,
+            endedAt,
+            output: result.output,
+            error: result.error,
+            exitCode: result.exitCode
+          })
+
           if (result.cancelled) {
             this.updateExecutionLog(action.id, {
               status: 'cancelled',
               endedAt,
               duration: endedAt - startedAt,
-              error: result.error || '用户取消执行'
+              error: result.error || '用户取消执行',
+              target: result.target,
+              output: result.output,
+              exitCode: result.exitCode,
+              confirmed: result.confirmed
             })
             for (const actionToCancel of scene.actions.slice(i + 1)) {
               this.updateExecutionLog(actionToCancel.id, {
@@ -477,7 +493,11 @@ $toast = [Windows.UI.Notifications.ToastNotification]::new($xml)
               status: 'failed',
               endedAt,
               duration: endedAt - startedAt,
-              error: result.error || '动作执行失败'
+              error: result.error || '动作执行失败',
+              target: result.target,
+              output: result.output,
+              exitCode: result.exitCode,
+              confirmed: result.confirmed
             })
 
             if (failureStrategy === 'stop') {
@@ -500,7 +520,11 @@ $toast = [Windows.UI.Notifications.ToastNotification]::new($xml)
               status: result.skipped ? 'skipped' : 'success',
               endedAt,
               duration: endedAt - startedAt,
-              message: result.skipped ? '已跳过：目标已满足' : '执行成功'
+              message: result.skipped ? '已跳过：目标已满足' : '执行成功',
+              target: result.target,
+              output: result.output,
+              exitCode: result.exitCode,
+              confirmed: result.confirmed
             })
           }
 

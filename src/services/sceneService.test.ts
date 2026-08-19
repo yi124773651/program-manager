@@ -6,7 +6,8 @@ import type { Scene } from '@/types'
 vi.mock('@/services/persistenceService', () => ({
   persistenceService: {
     load: vi.fn(),
-    save: vi.fn()
+    save: vi.fn(),
+    backup: vi.fn()
   }
 }))
 
@@ -30,6 +31,8 @@ describe('sceneService', () => {
   beforeEach(() => {
     mockedPersistenceService.load.mockReset()
     mockedPersistenceService.save.mockReset()
+    mockedPersistenceService.backup.mockReset()
+    mockedPersistenceService.backup.mockResolvedValue('D:\\backup\\sanitize-scenes')
     vi.useRealTimers()
   })
 
@@ -73,5 +76,54 @@ describe('sceneService', () => {
       .toThrow('动作类型无效')
     expect(() => sceneService.importSceneJson(JSON.stringify({ name: '坏场景', failureStrategy: 'bad', actions: [] })))
       .toThrow('场景失败策略无效')
+  })
+
+  it('导入场景会拒绝脚本字段、非法网址和危险路径', () => {
+    const scriptScene = sceneService.importSceneJson(JSON.stringify({
+      name: '脚本场景',
+      actions: [{ type: 'open_url', params: { url: 'https://example.com', scriptContent: 'Start-Process calc' } }]
+    }))
+    expect(scriptScene.actions[0]).toMatchObject({ disabled: true, disabledReason: expect.stringContaining('脚本') })
+
+    expect(() => sceneService.importSceneJson(JSON.stringify({
+      name: '网址场景',
+      actions: [{ type: 'open_url', params: { url: 'javascript:alert(1)' } }]
+    }))).toThrow('动作参数无效')
+
+    expect(() => sceneService.importSceneJson(JSON.stringify({
+      name: '路径场景',
+      actions: [{ type: 'open_file', params: { path: 'relative.txt' } }]
+    }))).toThrow('动作参数无效')
+  })
+
+  it('加载旧场景会将无法安全迁移的动作标记为禁用', async () => {
+    mockedPersistenceService.load.mockResolvedValue({
+      scenes: [{
+        id: 'legacy-scene',
+        name: '旧场景',
+        actions: [
+          { id: 'legacy-script', type: 'powershell', params: { script: 'Get-Process' } },
+          { id: 'legacy-delay', type: 'delay', params: { seconds: 3, unknownField: 'drop-me' } }
+        ]
+      }]
+    })
+
+    const scenes = await sceneService.loadScenes()
+    expect(scenes).toHaveLength(1)
+    expect(scenes[0].actions[0]).toMatchObject({ disabled: true, legacyType: 'powershell' })
+    expect(scenes[0].actions[1]).toMatchObject({ type: 'delay', params: { seconds: 3 } })
+    expect(scenes[0].actions[1].params).not.toHaveProperty('unknownField')
+    expect(mockedPersistenceService.backup).toHaveBeenCalledWith('scenes', '清洗旧场景动作配置前自动备份')
+    expect(mockedPersistenceService.save).toHaveBeenCalledWith('scenes', { scenes })
+  })
+
+  it('加载已清洗场景不会重复备份或回写', async () => {
+    const scene = makeScene()
+    mockedPersistenceService.load.mockResolvedValue({ scenes: [scene] })
+
+    await sceneService.loadScenes()
+
+    expect(mockedPersistenceService.backup).not.toHaveBeenCalled()
+    expect(mockedPersistenceService.save).not.toHaveBeenCalled()
   })
 })

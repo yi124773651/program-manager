@@ -145,7 +145,7 @@
             <div class="setting-info">
               <div class="setting-label">图床地址</div>
               <div class="setting-desc">
-                输入随机图片 API 地址，每次启动自动刷新
+                支持 Picsum 或 Unsplash 图片地址，每次启动自动刷新
               </div>
             </div>
             <div class="setting-control api-bg-control">
@@ -809,7 +809,22 @@ const updateBackgroundSource = async (source: 'local' | 'api') => {
 
 // 更新图床 URL
 const updateBackgroundApiUrl = async (url: string) => {
-  await appStore.updateSettings({ backgroundApiUrl: url.trim() || undefined })
+  const value = url.trim()
+  if (!value) {
+    await appStore.updateSettings({ backgroundApiUrl: undefined })
+    return
+  }
+
+  try {
+    const parsed = new URL(value)
+    const allowedHosts = new Set(['picsum.photos', 'fastly.picsum.photos', 'images.unsplash.com'])
+    if (parsed.protocol !== 'https:' || !allowedHosts.has(parsed.hostname) || parsed.username || parsed.password) {
+      throw new Error('仅支持 Picsum 或 Unsplash 的 HTTPS 图片地址')
+    }
+    await appStore.updateSettings({ backgroundApiUrl: parsed.toString() })
+  } catch (error) {
+    alert(String(error))
+  }
 }
 
 // 刷新图床背景

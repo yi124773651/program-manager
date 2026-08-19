@@ -67,8 +67,11 @@
             :key="action.id"
             class="action-item"
             :class="[
-              `status-${getExecutionStatus(action.id)}`,
-              { running: scenesStore.currentExecutingAction === action.id }
+               `status-${getExecutionStatus(action.id)}`,
+               {
+                 running: scenesStore.currentExecutingAction === action.id,
+                 disabled: action.disabled
+               }
             ]"
           >
             <div class="action-drag-handle">
@@ -418,6 +421,7 @@ function getActionTypeName(type: SceneActionType): string {
 }
 
 function getActionDetail(action: SceneAction): string {
+  if (action.disabled) return action.disabledReason || '旧动作已禁用'
   let detail = ''
   switch (action.type) {
     case 'launch': case 'launch_admin': {
@@ -623,6 +627,7 @@ onMounted(() => nextTick(initSortable))
 .actions-list { flex: 1; overflow-y: auto; padding: 8px 12px; min-height: 200px; max-height: 300px; }
 .action-item { display: flex; align-items: center; gap: 10px; padding: 12px; background: var(--bg-secondary); border-radius: 10px; margin-bottom: 8px; border: 1px solid transparent; transition: all 0.2s; }
 .action-item:hover { background: var(--bg-tertiary); }
+.action-item.disabled { opacity: 0.65; border-color: var(--danger-color); }
 .action-item.running { border-color: var(--primary-color); box-shadow: 0 0 0 2px rgba(0,122,255,0.12); }
 .action-item.status-success { border-color: rgba(52,199,89,0.45); }
 .action-item.status-failed { border-color: rgba(255,59,48,0.45); }

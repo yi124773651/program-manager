@@ -12,6 +12,7 @@ pub const TODOS_FILE: &str = "todos.json";
 pub const CLIPBOARD_FILE: &str = "clipboard.json";
 pub const ACTIONS_FILE: &str = "actions.json";
 pub const MIGRATIONS_FILE: &str = "migrations.json";
+pub const ACTION_AUDIT_FILE: &str = "action-audit.jsonl";
 const DATA_DIR_ENV: &str = "PROGRAM_MANAGER_DATA_DIR";
 
 #[cfg(test)]
@@ -98,6 +99,10 @@ pub fn actions_path() -> PathBuf {
 
 pub fn migrations_path() -> PathBuf {
     data_file(MIGRATIONS_FILE)
+}
+
+pub fn action_audit_path() -> PathBuf {
+    data_file(ACTION_AUDIT_FILE)
 }
 
 pub fn icons_dir() -> PathBuf {

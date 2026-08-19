@@ -1,56 +1,139 @@
-use serde::Serialize;
+use base64::engine::general_purpose::STANDARD as BASE64;
+use base64::Engine;
+use reqwest::{Client, Url};
+use serde::{Deserialize, Serialize};
+use std::time::Duration;
+
+const MAX_IMAGE_BYTES: usize = 10 * 1024 * 1024;
+const GITHUB_RELEASES_URL: &str =
+    "https://api.github.com/repos/yi124773651/program-manager/releases/latest";
+const IMAGE_HOSTS: &[&str] = &[
+    "picsum.photos",
+    "fastly.picsum.photos",
+    "images.unsplash.com",
+];
+
+fn https_url(value: &str, field: &str) -> Result<Url, String> {
+    let url = Url::parse(value).map_err(|_| format!("{}格式无效", field))?;
+    if url.scheme() != "https" || url.host_str().is_none() {
+        return Err(format!("{}必须使用 HTTPS", field));
+    }
+    Ok(url)
+}
+
+fn github_output_url(value: &str, field: &str) -> Result<String, String> {
+    let url = https_url(value, field)?;
+    let host = url.host_str().unwrap_or_default();
+    if host != "github.com" && !host.ends_with(".githubusercontent.com") {
+        return Err(format!("{}域名不在 GitHub 允许范围内", field));
+    }
+    Ok(url.to_string())
+}
+
+fn is_allowed_github_url(url: &Url) -> bool {
+    if url.scheme() != "https" || !url.username().is_empty() || url.password().is_some() {
+        return false;
+    }
+    let host = url.host_str().unwrap_or_default();
+    host == "api.github.com" || host == "github.com" || host.ends_with(".githubusercontent.com")
+}
+
+fn is_allowed_image_url(url: &Url) -> bool {
+    if url.scheme() != "https"
+        || !url.username().is_empty()
+        || url.password().is_some()
+        || url.port_or_known_default() != Some(443)
+    {
+        return false;
+    }
+    let host = url.host_str().unwrap_or_default();
+    IMAGE_HOSTS.contains(&host)
+}
+
+fn redirect_policy(validator: fn(&Url) -> bool, label: &'static str) -> reqwest::redirect::Policy {
+    reqwest::redirect::Policy::custom(move |attempt| {
+        if attempt.previous().len() >= 5 {
+            return attempt.error(std::io::Error::other(format!("{}重定向次数过多", label)));
+        }
+        if !validator(attempt.url()) {
+            return attempt.error(std::io::Error::other(format!(
+                "{}重定向域名不在允许范围内",
+                label
+            )));
+        }
+        attempt.follow()
+    })
+}
+
+fn github_client() -> Result<Client, String> {
+    Client::builder()
+        .timeout(Duration::from_secs(15))
+        .redirect(redirect_policy(is_allowed_github_url, "GitHub 请求"))
+        .user_agent(format!("ProgramManager/{}", env!("CARGO_PKG_VERSION")))
+        .build()
+        .map_err(|error| format!("创建网络客户端失败: {}", error))
+}
+
+fn image_client() -> Result<Client, String> {
+    Client::builder()
+        .timeout(Duration::from_secs(15))
+        .redirect(redirect_policy(is_allowed_image_url, "图片请求"))
+        .user_agent(format!("ProgramManager/{}", env!("CARGO_PKG_VERSION")))
+        .build()
+        .map_err(|error| format!("创建网络客户端失败: {}", error))
+}
 
 #[tauri::command]
 pub async fn fetch_image_as_base64(url: String) -> Result<String, String> {
-    #[cfg(target_os = "windows")]
-    {
-        use std::os::windows::process::CommandExt;
-        use std::process::Command;
-
-        const CREATE_NO_WINDOW: u32 = 0x08000000;
-
-        let script = format!(
-            r#"
-$ProgressPreference = 'SilentlyContinue'
-try {{
-    $response = Invoke-WebRequest -Uri '{}' -UseBasicParsing -TimeoutSec 15 -MaximumRedirection 5
-    $contentType = $response.Headers['Content-Type']
-    if ($contentType -is [array]) {{ $contentType = $contentType[0] }}
-    if (-not $contentType) {{ $contentType = 'image/jpeg' }}
-    if ($contentType -notlike 'image/*') {{ $contentType = 'image/jpeg' }}
-    $base64 = [Convert]::ToBase64String($response.Content)
-    Write-Output "data:$contentType;base64,$base64"
-}} catch {{
-    Write-Error $_.Exception.Message
-    exit 1
-}}
-"#,
-            url.replace("'", "''")
-        );
-
-        let output = Command::new("powershell")
-            .args(&["-NoProfile", "-Command", &script])
-            .creation_flags(CREATE_NO_WINDOW)
-            .output()
-            .map_err(|e| format!("执行失败: {}", e))?;
-
-        if !output.status.success() {
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            return Err(format!("获取图片失败: {}", stderr.trim()));
-        }
-
-        let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
-        if stdout.starts_with("data:image/") {
-            Ok(stdout)
-        } else {
-            Err("返回数据不是有效的图片".to_string())
-        }
+    let url = https_url(&url, "图片网址")?;
+    if !is_allowed_image_url(&url) {
+        return Err(format!(
+            "图片域名不在允许范围内，仅支持：{}",
+            IMAGE_HOSTS.join("、")
+        ));
+    }
+    let response = image_client()?
+        .get(url)
+        .send()
+        .await
+        .map_err(|error| format!("获取图片失败: {}", error))?
+        .error_for_status()
+        .map_err(|error| format!("获取图片失败: {}", error))?;
+    if !is_allowed_image_url(response.url()) {
+        return Err("图片重定向域名不在允许范围内".to_string());
     }
 
-    #[cfg(not(target_os = "windows"))]
-    {
-        Err("此功能仅支持 Windows".to_string())
+    let content_type = response
+        .headers()
+        .get(reqwest::header::CONTENT_TYPE)
+        .and_then(|value| value.to_str().ok())
+        .and_then(|value| value.split(';').next())
+        .unwrap_or("")
+        .to_ascii_lowercase();
+    if !content_type.starts_with("image/") {
+        return Err("响应不是图片类型".to_string());
     }
+
+    if response
+        .content_length()
+        .is_some_and(|length| length > MAX_IMAGE_BYTES as u64)
+    {
+        return Err("图片超过 10 MB 限制".to_string());
+    }
+
+    let bytes = response
+        .bytes()
+        .await
+        .map_err(|error| format!("读取图片失败: {}", error))?;
+    if bytes.len() > MAX_IMAGE_BYTES {
+        return Err("图片超过 10 MB 限制".to_string());
+    }
+
+    Ok(format!(
+        "data:{};base64,{}",
+        content_type,
+        BASE64.encode(bytes)
+    ))
 }
 
 #[derive(Serialize)]
@@ -64,90 +147,72 @@ pub struct AppUpdateInfo {
     pub download_url: String,
 }
 
+#[derive(Deserialize)]
+struct GitHubRelease {
+    tag_name: String,
+    html_url: String,
+    body: Option<String>,
+    assets: Vec<GitHubAsset>,
+}
+
+#[derive(Deserialize)]
+struct GitHubAsset {
+    name: String,
+    browser_download_url: String,
+}
+
 #[tauri::command]
 pub async fn check_app_version_update() -> Result<AppUpdateInfo, String> {
-    #[cfg(target_os = "windows")]
-    {
-        use std::os::windows::process::CommandExt;
-        use std::process::Command;
+    let response: GitHubRelease = github_client()?
+        .get(https_url(GITHUB_RELEASES_URL, "更新地址")?)
+        .send()
+        .await
+        .map_err(|error| format!("检查更新失败: {}", error))?
+        .error_for_status()
+        .map_err(|error| format!("检查更新失败: {}", error))?
+        .json()
+        .await
+        .map_err(|error| format!("解析更新信息失败: {}", error))?;
 
-        const CREATE_NO_WINDOW: u32 = 0x08000000;
-        let current_version = env!("CARGO_PKG_VERSION").to_string();
-
-        let script = r#"
-[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
-$ProgressPreference = 'SilentlyContinue'
-try {
-    $response = Invoke-RestMethod -Uri 'https://api.github.com/repos/yi124773651/program-manager/releases/latest' -TimeoutSec 10
-    $json = @{
-        tag_name = $response.tag_name
-        html_url = $response.html_url
-        body = if ($response.body) { $response.body } else { "" }
-        download_url = ""
-    }
-    foreach ($asset in $response.assets) {
-        if ($asset.name -like '*setup*' -or $asset.name -like '*.exe') {
-            $json.download_url = $asset.browser_download_url
-            break
-        }
-    }
-    $json | ConvertTo-Json -Compress
-} catch {
-    Write-Error $_.Exception.Message
-    exit 1
-}
-"#;
-
-        let output = Command::new("powershell")
-            .args(&["-NoProfile", "-Command", script])
-            .creation_flags(CREATE_NO_WINDOW)
-            .output()
-            .map_err(|e| format!("检查更新失败: {}", e))?;
-
-        if !output.status.success() {
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            return Err(format!("检查更新失败: {}", stderr.trim()));
-        }
-
-        let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
-        let json: serde_json::Value =
-            serde_json::from_str(&stdout).map_err(|e| format!("解析更新信息失败: {}", e))?;
-
-        let tag = json["tag_name"].as_str().unwrap_or("").to_string();
-        let latest_version = tag.trim_start_matches('v').to_string();
-        let release_url = json["html_url"].as_str().unwrap_or("").to_string();
-        let release_notes = json["body"].as_str().unwrap_or("").to_string();
-        let download_url = json["download_url"].as_str().unwrap_or("").to_string();
-        let has_update = version_is_newer(&current_version, &latest_version);
-
-        Ok(AppUpdateInfo {
-            has_update,
-            current_version,
-            latest_version,
-            release_url,
-            release_notes,
-            download_url,
+    let current_version = env!("CARGO_PKG_VERSION").to_string();
+    let latest_version = response.tag_name.trim_start_matches('v').to_string();
+    let download_url = response
+        .assets
+        .iter()
+        .find(|asset| {
+            let name = asset.name.to_ascii_lowercase();
+            name.contains("setup") || name.ends_with(".exe")
         })
-    }
+        .map(|asset| github_output_url(&asset.browser_download_url, "下载地址"))
+        .transpose()?
+        .unwrap_or_default();
 
-    #[cfg(not(target_os = "windows"))]
-    {
-        Err("此功能仅支持 Windows".to_string())
-    }
+    let release_url = github_output_url(&response.html_url, "发布地址")?;
+
+    Ok(AppUpdateInfo {
+        has_update: version_is_newer(&current_version, &latest_version),
+        current_version,
+        latest_version,
+        release_url,
+        release_notes: response.body.unwrap_or_default(),
+        download_url,
+    })
 }
 
 fn version_is_newer(current: &str, latest: &str) -> bool {
-    let parse = |s: &str| -> Vec<u64> { s.split('.').filter_map(|p| p.parse().ok()).collect() };
-    let c = parse(current);
-    let l = parse(latest);
-    for i in 0..c.len().max(l.len()) {
-        let cv = c.get(i).copied().unwrap_or(0);
-        let lv = l.get(i).copied().unwrap_or(0);
-        if lv > cv {
-            return true;
-        }
-        if lv < cv {
-            return false;
+    let parse = |value: &str| -> Vec<u64> {
+        value
+            .split('.')
+            .map(|part| part.parse().unwrap_or(0))
+            .collect()
+    };
+    let current = parse(current);
+    let latest = parse(latest);
+    for index in 0..current.len().max(latest.len()) {
+        let current_part = current.get(index).copied().unwrap_or(0);
+        let latest_part = latest.get(index).copied().unwrap_or(0);
+        if latest_part != current_part {
+            return latest_part > current_part;
         }
     }
     false
@@ -160,5 +225,30 @@ mod tests {
         assert!(super::version_is_newer("1.1.4", "1.2.0"));
         assert!(!super::version_is_newer("1.2.0", "1.1.9"));
         assert!(!super::version_is_newer("1.2.0", "1.2.0"));
+    }
+
+    #[test]
+    fn 更新输出地址只接受允许的_https域名() {
+        assert!(super::github_output_url("https://github.com/example/release", "发布地址").is_ok());
+        assert!(super::github_output_url(
+            "https://objects.githubusercontent.com/example.exe",
+            "下载地址"
+        )
+        .is_ok());
+        assert!(super::github_output_url("https://example.com/release", "发布地址").is_err());
+    }
+
+    #[test]
+    fn 背景图片只接受固定_https域名() {
+        let allowed = reqwest::Url::parse("https://picsum.photos/1920/1080").unwrap();
+        let redirected =
+            reqwest::Url::parse("https://fastly.picsum.photos/id/1/1920/1080.jpg").unwrap();
+        let denied = reqwest::Url::parse("https://example.com/image.jpg").unwrap();
+        let credentialed = reqwest::Url::parse("https://user@example.com/image.jpg").unwrap();
+
+        assert!(super::is_allowed_image_url(&allowed));
+        assert!(super::is_allowed_image_url(&redirected));
+        assert!(!super::is_allowed_image_url(&denied));
+        assert!(!super::is_allowed_image_url(&credentialed));
     }
 }

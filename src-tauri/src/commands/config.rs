@@ -113,6 +113,16 @@ impl PersistedDataType {
             PersistedDataType::Actions => paths::actions_path(),
         }
     }
+
+    fn file_name(self) -> &'static str {
+        match self {
+            PersistedDataType::Scenes => paths::SCENES_FILE,
+            PersistedDataType::Notes => paths::NOTES_FILE,
+            PersistedDataType::Todos => paths::TODOS_FILE,
+            PersistedDataType::Clipboard => paths::CLIPBOARD_FILE,
+            PersistedDataType::Actions => paths::ACTIONS_FILE,
+        }
+    }
 }
 
 #[tauri::command]
@@ -141,6 +151,39 @@ pub fn write_persisted_data(
     };
     json_store::write_json(&data_type.path(), &envelope).map_err(|error| error.to_string())?;
     Ok(envelope)
+}
+
+/// 在迁移并覆盖已有数据前创建单文件备份，避免清洗失败时丢失原始配置。
+#[tauri::command]
+pub fn backup_persisted_data(
+    data_type: PersistedDataType,
+    reason: String,
+) -> Result<Option<String>, String> {
+    if reason.is_empty()
+        || reason.chars().count() > 200
+        || reason.chars().any(|character| character.is_control())
+    {
+        return Err("备份原因无效".to_string());
+    }
+
+    let source = data_type.path();
+    if !source.exists() {
+        return Ok(None);
+    }
+
+    let dir = paths::backups_dir().join(format!("sanitize-{}", json_store::now_millis()));
+    std::fs::create_dir_all(&dir).map_err(|error| error.to_string())?;
+    std::fs::copy(&source, dir.join(data_type.file_name())).map_err(|error| error.to_string())?;
+
+    let manifest = backup::BackupManifest {
+        created_at: json_store::now_millis(),
+        reason,
+        files: vec![data_type.file_name().to_string()],
+    };
+    json_store::write_json(&dir.join("manifest.json"), &manifest)
+        .map_err(|error| error.to_string())?;
+
+    Ok(Some(dir.to_string_lossy().to_string()))
 }
 
 #[tauri::command]
@@ -262,7 +305,10 @@ pub fn current_unix_secs() -> u64 {
 
 #[cfg(test)]
 mod tests {
-    use super::{get_legacy_data_status, migrate_legacy_local_storage, LegacyLocalStoragePayload};
+    use super::{
+        backup_persisted_data, get_legacy_data_status, migrate_legacy_local_storage,
+        LegacyLocalStoragePayload, PersistedDataType,
+    };
     use crate::storage::{json_store, migration, paths};
     use serde_json::{json, Value};
     use std::collections::HashMap;
@@ -329,6 +375,33 @@ mod tests {
         assert!(skipped.success);
         assert!(skipped.skipped);
         assert!(skipped.written_files.is_empty());
+
+        let _ = fs::remove_dir_all(data_dir);
+    }
+
+    #[test]
+    fn 清洗前备份只复制目标文件并拒绝无效原因() {
+        let data_dir = unique_temp_dir("sanitize-backup");
+        let _guard = paths::set_test_data_dir(data_dir.clone());
+        let _ = fs::remove_dir_all(&data_dir);
+
+        json_store::write_enveloped_json(
+            &paths::scenes_path(),
+            1,
+            json!({ "scenes": [{ "id": "scene-1" }] }),
+        )
+        .expect("应能创建场景文件");
+
+        let backup_dir = backup_persisted_data(
+            PersistedDataType::Scenes,
+            "清洗旧场景动作配置前自动备份".to_string(),
+        )
+        .expect("备份应成功")
+        .expect("已有文件时应返回备份目录");
+        let backup_path = PathBuf::from(backup_dir);
+        assert!(backup_path.join(paths::SCENES_FILE).is_file());
+        assert!(backup_path.join("manifest.json").is_file());
+        assert!(backup_persisted_data(PersistedDataType::Scenes, String::new()).is_err());
 
         let _ = fs::remove_dir_all(data_dir);
     }

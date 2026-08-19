@@ -31,6 +31,10 @@ export const persistenceService = {
     }
   },
 
+  async backup(dataType: PersistedDataType, reason: string): Promise<string | null> {
+    return tauriAdapter.backupPersistedData(dataType, reason)
+  },
+
   loadLegacy<T>(dataType: PersistedDataType, fallback: T): T {
     if (!canUseLocalStorage()) return fallback
 

@@ -10,21 +10,30 @@ tauri-build = { version = "2.0", features = [] }
 
 [dependencies]
 tauri = { version = "2.0", features = ["protocol-asset", "tray-icon"] }
-tauri-plugin-shell = "2.0"
 tauri-plugin-dialog = "2.0"
 tauri-plugin-fs = "2.0"
 tauri-plugin-single-instance = "2"
 tauri-plugin-global-shortcut = "2"
 tauri-plugin-clipboard-manager = "2"
+tauri-plugin-notification = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 uuid = { version = "1", features = ["v4", "serde"] }
 dirs = "5"
 base64 = "0.22"
 image = "0.24"
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 
 [target.'cfg(windows)'.dependencies]
-winapi = { version = "0.3", features = ["shellapi", "winuser", "wingdi", "winnt"] }
+winapi = { version = "0.3", features = [
+    "handleapi",
+    "processthreadsapi",
+    "shellapi",
+    "tlhelp32",
+    "winuser",
+    "wingdi",
+    "winnt"
+] }
 windows = { version = "0.58", features = [
     "Win32_UI_Shell",
     "Win32_UI_WindowsAndMessaging",
@@ -32,6 +41,9 @@ windows = { version = "0.58", features = [
     "Win32_Foundation",
     "Win32_System_Com",
     "Win32_Storage_FileSystem",
+    "Win32_System_Diagnostics_ToolHelp",
+    "Win32_System_Threading",
+    "Win32_UI_Input_KeyboardAndMouse",
 ] }
 winreg = "0.52"
 

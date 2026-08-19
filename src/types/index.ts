@@ -155,8 +155,6 @@ export interface ActionTemplate {
   description: string
   icon: string
   group: ActionGroup
-  // 脚本模板（使用 PowerShell）
-  scriptTemplate: string
   // 是否默认启用
   defaultEnabled: boolean
   // 是否需要输出
@@ -169,6 +167,24 @@ export interface ActionTemplate {
 export interface EnabledActions {
   // 记录启用的动作ID列表
   enabled: string[]
+}
+
+export type ActionAuditSource = 'quick_action' | 'scene'
+export type ActionAuditStatus = 'success' | 'failed' | 'skipped' | 'cancelled' | 'denied'
+
+export interface ActionAuditEntry {
+  id: string
+  source: ActionAuditSource
+  actionId: string
+  actionType: string
+  target?: string
+  status: ActionAuditStatus
+  confirmed: boolean
+  startedAt: number
+  endedAt: number
+  output?: string
+  error?: string
+  exitCode?: number
 }
 
 // ============ 场景功能类型 ============
@@ -188,6 +204,10 @@ export type SceneActionType =
 export interface SceneAction {
   id: string
   type: SceneActionType
+  // 无法安全迁移的旧动作只保留禁用记录，禁止自动执行。
+  disabled?: boolean
+  disabledReason?: string
+  legacyType?: string
   // 根据类型不同，params 包含不同的参数
   params: {
     appId?: string      // launch, launch_admin, close_app
@@ -218,6 +238,10 @@ export interface SceneActionExecutionLog {
   actionId: string
   actionType: SceneActionType
   status: SceneActionExecutionStatus
+  target?: string
+  output?: string
+  exitCode?: number
+  confirmed?: boolean
   startedAt?: number
   endedAt?: number
   duration?: number
@@ -337,7 +361,6 @@ export const PRESET_ACTIONS: ActionTemplate[] = [
     description: '在资源管理器中打开应用程序所在目录并选中文件',
     icon: 'folder-open',
     group: 'file',
-    scriptTemplate: '[System.Diagnostics.Process]::Start("explorer.exe", (\'/select,"{0}"\' -f $env:APP_PATH))',
     defaultEnabled: true,
     showOutput: false,
     order: 1
@@ -348,8 +371,6 @@ export const PRESET_ACTIONS: ActionTemplate[] = [
     description: '将应用程序完整路径复制到剪贴板',
     icon: 'copy',
     group: 'file',
-    scriptTemplate: `Set-Clipboard -Value $env:APP_PATH
-Write-Host "已复制: $env:APP_PATH"`,
     defaultEnabled: true,
     showOutput: true,
     order: 2
@@ -362,7 +383,6 @@ Write-Host "已复制: $env:APP_PATH"`,
     description: '使用管理员权限启动该应用程序',
     icon: 'shield',
     group: 'process',
-    scriptTemplate: `Start-Process -FilePath $env:APP_PATH -Verb RunAs`,
     defaultEnabled: true,
     showOutput: false,
     order: 10
@@ -373,13 +393,6 @@ Write-Host "已复制: $env:APP_PATH"`,
     description: '强制结束该应用程序的所有进程',
     icon: 'x-circle',
     group: 'process',
-    scriptTemplate: `$name = [IO.Path]::GetFileNameWithoutExtension($env:APP_PATH)
-$ps = Get-Process -Name $name -ErrorAction SilentlyContinue
-if ($ps) {
-    $c = $ps.Count
-    $ps | Stop-Process -Force
-    Write-Host "已结束 $c 个 $name 进程"
-} else { Write-Host "$name 未运行" }`,
     defaultEnabled: true,
     showOutput: true,
     order: 11
@@ -394,11 +407,6 @@ export const DEFAULT_ENABLED_ACTIONS: EnabledActions = {
 // 获取分组下的动作
 export function getActionsByGroup(group: ActionGroup): ActionTemplate[] {
   return PRESET_ACTIONS.filter(a => a.group === group).sort((a, b) => a.order - b.order)
-}
-
-// 获取动作模板
-export function getActionTemplate(id: string): ActionTemplate | undefined {
-  return PRESET_ACTIONS.find(a => a.id === id)
 }
 
 // ============ 程序维护功能类型 ============

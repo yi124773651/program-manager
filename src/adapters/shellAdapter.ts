@@ -1,5 +1,7 @@
-import { open } from '@tauri-apps/plugin-shell'
+import { invoke } from '@tauri-apps/api/core'
 
 export const shellAdapter = {
-  open
+  open(url: string) {
+    return invoke<void>('open_url', { url })
+  }
 }

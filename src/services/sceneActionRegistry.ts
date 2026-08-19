@@ -21,6 +21,9 @@ export function cloneSceneAction(action: SceneAction): SceneAction {
   return {
     id: `action_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
     type: action.type,
+    disabled: action.disabled,
+    disabledReason: action.disabledReason,
+    legacyType: action.legacyType,
     params: { ...action.params }
   }
 }

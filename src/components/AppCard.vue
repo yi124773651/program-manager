@@ -336,8 +336,29 @@ const handleClickOutside = () => {
 
 const handleLaunchAsAdmin = async () => {
   hideMenu()
+  const confirmed = await ask(`确定要以管理员身份启动“${props.app.name}”吗？`, {
+    title: '确认管理员启动',
+    kind: 'warning',
+    okLabel: '继续启动',
+    cancelLabel: '取消'
+  })
+  if (!confirmed) return
+
+  const startedAt = Date.now()
   try {
-    const result = await actionsStore.executeAction('run_as_admin', props.app.path, props.app.name)
+    const result = await actionsStore.executeAction('run_as_admin', props.app.path, props.app.name, true)
+    await actionsStore.recordAudit({
+      source: 'quick_action',
+      actionId: 'run_as_admin',
+      actionType: 'run_as_admin',
+      target: props.app.path,
+      status: result.success ? 'success' : 'failed',
+      confirmed: true,
+      startedAt,
+      endedAt: Date.now(),
+      output: result.output,
+      error: result.errorOutput
+    })
     if (!result.success) {
       const errorMsg = result.errorOutput || result.output || '未知错误'
       alert(`以管理员身份运行失败:\n${errorMsg}`)
@@ -350,8 +371,32 @@ const handleLaunchAsAdmin = async () => {
 const handleRunAction = async (action: ActionTemplate) => {
   hideMenu()
 
+  const startedAt = Date.now()
+  let confirmed = action.id !== 'kill_process'
   try {
-    const result = await actionsStore.executeAction(action.id, props.app.path, props.app.name)
+    if (action.id === 'kill_process') {
+      confirmed = await ask(`确定要强制结束“${props.app.name}”的全部进程吗？`, {
+        title: '确认结束进程',
+        kind: 'warning',
+        okLabel: '结束进程',
+        cancelLabel: '取消'
+      })
+       if (!confirmed) return
+    }
+
+    const result = await actionsStore.executeAction(action.id, props.app.path, props.app.name, confirmed)
+    await actionsStore.recordAudit({
+      source: 'quick_action',
+      actionId: action.id,
+      actionType: action.id,
+      target: props.app.path,
+      status: result.success ? 'success' : 'failed',
+      confirmed: action.id === 'kill_process' ? confirmed : false,
+      startedAt,
+      endedAt: Date.now(),
+      output: result.output,
+      error: result.errorOutput
+    })
 
     // 处理执行失败的情况 - 总是显示错误
     if (!result.success) {

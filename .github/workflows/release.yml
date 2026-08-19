@@ -65,12 +65,30 @@ jobs:
         working-directory: src-tauri
 
       - name: Build Tauri app
-        uses: tauri-apps/tauri-action@v0
+        run: npm run tauri build
+
+      - name: Generate release manifest
+        shell: pwsh
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_COMMIT: ${{ github.sha }}
+        run: |
+          $mainBinary = Join-Path $env:GITHUB_WORKSPACE 'src-tauri/target/release/program-manager.exe'
+          $installers = Join-Path $env:GITHUB_WORKSPACE 'src-tauri/target/release/bundle/nsis/*.exe'
+          $manifest = Join-Path $env:GITHUB_WORKSPACE 'src-tauri/target/release/program-manager-release-manifest.json'
+          $releaseVersion = node -p "require('./package.json').version"
+          & "$env:GITHUB_WORKSPACE/scripts/create-release-manifest.ps1" `
+            -OutputPath $manifest `
+            -ArtifactPath $mainBinary, $installers `
+            -Version $releaseVersion `
+            -Commit $env:RELEASE_COMMIT `
+            -BuiltAt ([DateTimeOffset]::UtcNow.ToString('O')) `
+            -RepositoryRoot $env:GITHUB_WORKSPACE
+
+      - name: Create GitHub release
+        uses: softprops/action-gh-release@v2
         with:
-          tagName: ${{ github.ref_name }}
-          releaseName: ${{ github.ref_name }}
-          releaseBody: '程序管理器 ${{ github.ref_name }}'
-          releaseDraft: false
-          prerelease: false
+          body: '程序管理器 ${{ github.ref_name }}'
+          files: |
+            src-tauri/target/release/bundle/nsis/*.exe
+            src-tauri/target/release/program-manager.exe
+            src-tauri/target/release/program-manager-release-manifest.json

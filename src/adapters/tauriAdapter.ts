@@ -85,6 +85,10 @@ export const tauriAdapter = {
     return invoke<DataEnvelope<T>>('write_persisted_data', { dataType, data })
   },
 
+  backupPersistedData(dataType: PersistedDataType, reason: string) {
+    return invoke<string | null>('backup_persisted_data', { dataType, reason })
+  },
+
   getLegacyDataStatus(payload?: LegacyLocalStoragePayload) {
     return invoke<LegacyDataStatus>('get_legacy_data_status', { payload })
   },

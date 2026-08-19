@@ -3,18 +3,23 @@ import { invoke } from '@tauri-apps/api/core'
 import {
   PRESET_ACTIONS,
   DEFAULT_ENABLED_ACTIONS,
-  getActionTemplate,
-  type ActionTemplate
+  type ActionTemplate,
+  type ActionAuditEntry
 } from '@/types'
 import { persistenceService } from '@/services/persistenceService'
+import { clipboardAdapter } from '@/adapters/clipboardAdapter'
 
 interface ActionsStorage {
-  enabled?: string[]
+  enabled?: unknown
+  disabledLegacy?: Record<string, string>
+  audit?: unknown
 }
 
 export const useActionsStore = defineStore('actions', {
   state: () => ({
     enabledActions: [...DEFAULT_ENABLED_ACTIONS.enabled] as string[],
+    disabledLegacyActions: {} as Record<string, string>,
+    auditEntries: [] as ActionAuditEntry[],
     initialized: false,
     executing: false
   }),
@@ -46,7 +51,29 @@ export const useActionsStore = defineStore('actions', {
         const config = await persistenceService.load<ActionsStorage>('actions', {
           enabled: DEFAULT_ENABLED_ACTIONS.enabled
         })
-        this.enabledActions = config.enabled || DEFAULT_ENABLED_ACTIONS.enabled
+        const allowedIds = new Set(PRESET_ACTIONS.map(action => action.id))
+        const configured = Array.isArray(config.enabled) ? config.enabled : []
+        const validEnabled = configured.filter((id): id is string => typeof id === 'string' && allowedIds.has(id))
+        this.enabledActions = Array.isArray(config.enabled)
+          ? validEnabled
+          : [...DEFAULT_ENABLED_ACTIONS.enabled]
+        this.disabledLegacyActions = Object.fromEntries(
+          Object.entries(config.disabledLegacy || {}).filter(([key, value]) =>
+            typeof key === 'string' && typeof value === 'string' && key.length <= 128 && value.length <= 200
+          )
+        )
+        this.auditEntries = Array.isArray(config.audit)
+          ? config.audit.filter((entry): entry is ActionAuditEntry => {
+              if (!entry || typeof entry !== 'object') return false
+              const value = entry as Partial<ActionAuditEntry>
+              return typeof value.id === 'string' && typeof value.actionId === 'string' &&
+                typeof value.actionType === 'string' && typeof value.status === 'string' &&
+                typeof value.startedAt === 'number' && typeof value.endedAt === 'number'
+            }).slice(0, 200)
+          : []
+        if (configured.some(id => typeof id !== 'string' || !allowedIds.has(id))) {
+          await this.saveConfig()
+        }
       } catch (error) {
         console.error('加载动作配置失败:', error)
       }
@@ -55,7 +82,9 @@ export const useActionsStore = defineStore('actions', {
     // 保存配置到统一 JSON 文件
     async saveConfig() {
       const config = {
-        enabled: this.enabledActions
+        enabled: [...new Set(this.enabledActions)].filter(id => PRESET_ACTIONS.some(action => action.id === id)),
+        disabledLegacy: this.disabledLegacyActions,
+        audit: this.auditEntries
       }
       await persistenceService.save('actions', config)
     },
@@ -71,30 +100,58 @@ export const useActionsStore = defineStore('actions', {
       void this.saveConfig()
     },
 
+    async recordAudit(entry: Omit<ActionAuditEntry, 'id'>) {
+      if (!this.initialized) {
+        await this.init()
+      }
+      const record: ActionAuditEntry = {
+        ...entry,
+        id: `audit_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
+      }
+      this.auditEntries.unshift(record)
+      this.auditEntries = this.auditEntries.slice(0, 200)
+      try {
+        await this.saveConfig()
+      } catch (error) {
+        console.error('保存动作审计日志失败:', error)
+      }
+    },
+
     // 执行动作
     async executeAction(
       actionId: string,
       appPath: string,
-      appName: string
+      _appName: string,
+      confirmed = false
     ): Promise<{ success: boolean; output: string; errorOutput: string }> {
       this.executing = true
 
       try {
         // 查找预设动作
-        const presetAction = getActionTemplate(actionId)
+        const presetAction = PRESET_ACTIONS.find(action => action.id === actionId)
 
         if (presetAction) {
-          // 执行预设动作的脚本模板
+          if (actionId === 'open_folder') {
+            await invoke('open_file_location', { filePath: appPath })
+            return { success: true, output: '', errorOutput: '' }
+          }
+
+          if (actionId === 'copy_path') {
+            await clipboardAdapter.writeText(appPath)
+            return { success: true, output: `已复制: ${appPath}`, errorOutput: '' }
+          }
+
+          // 只执行后端登记的固定动作，不向后端传递脚本源码。
           const result = await invoke<{
             success: boolean
             output: string
             errorOutput: string
             exitCode: number
             executionTime: number
-          }>('execute_action_template', {
-            scriptContent: presetAction.scriptTemplate,
+          }>('execute_app_action', {
+            actionId: presetAction.id,
             appPath,
-            appName
+            confirmed
           })
 
           return {

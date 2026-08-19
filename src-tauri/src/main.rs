@@ -19,11 +19,11 @@ fn main() {
     let config = utils::config::load_or_create_config();
 
     tauri::Builder::default()
-        .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .plugin(tauri_plugin_clipboard_manager::init())
+        .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_single_instance::init(|app, args, _cwd| {
             // 当检测到第二个实例启动时，这个回调会被调用
             println!("Single instance callback triggered with args: {:?}", args);
@@ -65,14 +65,20 @@ fn main() {
             is_context_menu_registered,
             resolve_shortcut,
             check_app_exists,
-            execute_action_template,
             // 应用操作命令
             launch_app_as_admin,
             // 进程检测命令
             is_process_running,
+            close_process,
             // 场景动作命令
             send_keys,
             wait_for_window,
+            activate_process_window,
+            open_url,
+            open_folder,
+            open_file,
+            show_notification,
+            execute_app_action,
             // 程序维护命令
             validate_all_apps,
             init_update_baseline,
@@ -93,6 +99,7 @@ fn main() {
             get_migration_status,
             read_persisted_data,
             write_persisted_data,
+            backup_persisted_data,
             export_local_data,
             preview_local_data_import,
             import_local_data,

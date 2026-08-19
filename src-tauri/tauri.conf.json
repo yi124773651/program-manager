@@ -50,10 +50,10 @@
       "tooltip": "程序管理器"
     },
     "security": {
-      "csp": "default-src 'self'; img-src 'self' asset: http://asset.localhost data: https: http:; style-src 'self' 'unsafe-inline'; connect-src 'self' https: http:",
+      "csp": "default-src 'self'; img-src 'self' asset: http://asset.localhost data:; style-src 'self' 'unsafe-inline'; connect-src 'self' https://api.github.com",
       "assetProtocol": {
         "enable": true,
-        "scope": ["**"]
+        "scope": ["$DATA/program-manager/**"]
       },
       "capabilities": ["default"]
     }

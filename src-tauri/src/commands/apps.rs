@@ -1,5 +1,6 @@
 use crate::commands::config::current_unix_secs;
 use crate::models::{App, AppState};
+use crate::utils::{audit, system};
 use tauri::State;
 
 #[tauri::command]
@@ -73,28 +74,7 @@ pub fn launch_app(app_id: String, state: State<AppState>) -> Result<(), String> 
         .get(&app_id)
         .ok_or_else(|| "应用不存在".to_string())?;
 
-    #[cfg(target_os = "windows")]
-    {
-        use std::os::windows::process::CommandExt;
-        use std::process::Command;
-
-        const CREATE_NO_WINDOW: u32 = 0x08000000;
-
-        Command::new("cmd")
-            .args(&["/C", "start", "", &app.path])
-            .creation_flags(CREATE_NO_WINDOW)
-            .spawn()
-            .map_err(|e| format!("启动失败: {}", e))?;
-    }
-
-    #[cfg(not(target_os = "windows"))]
-    {
-        use std::process::Command;
-        Command::new("open")
-            .arg(&app.path)
-            .spawn()
-            .map_err(|e| format!("启动失败: {}", e))?;
-    }
+    system::open_file(&app.path).map_err(|error| format!("启动失败: {}", error))?;
 
     Ok(())
 }
@@ -113,28 +93,7 @@ pub fn get_icons_dir() -> String {
 
 #[tauri::command]
 pub fn open_file_location(file_path: String) -> Result<(), String> {
-    #[cfg(target_os = "windows")]
-    {
-        use std::process::Command;
-        Command::new("explorer")
-            .args(&["/select,", &file_path])
-            .spawn()
-            .map_err(|e| format!("打开文件位置失败: {}", e))?;
-    }
-
-    #[cfg(not(target_os = "windows"))]
-    {
-        use std::process::Command;
-        let parent = std::path::Path::new(&file_path)
-            .parent()
-            .ok_or("无法获取父目录")?;
-        Command::new("open")
-            .arg(parent)
-            .spawn()
-            .map_err(|e| format!("打开文件位置失败: {}", e))?;
-    }
-
-    Ok(())
+    system::open_file_location(&file_path).map_err(|error| format!("打开文件位置失败: {}", error))
 }
 
 #[tauri::command]
@@ -207,27 +166,21 @@ pub fn check_app_exists(path: String, state: State<AppState>) -> bool {
 }
 
 #[tauri::command]
-pub fn launch_app_as_admin(app_path: String) -> Result<(), String> {
-    #[cfg(target_os = "windows")]
-    {
-        use std::os::windows::process::CommandExt;
-        use std::process::Command;
-
-        Command::new("powershell")
-            .args(&[
-                "-NoProfile",
-                "-Command",
-                &format!("Start-Process '{}' -Verb RunAs", app_path),
-            ])
-            .creation_flags(0x08000000)
-            .spawn()
-            .map_err(|e| format!("以管理员身份启动失败: {}", e))?;
+pub fn launch_app_as_admin(app_path: String, confirmed: bool) -> Result<(), String> {
+    if !confirmed {
+        return Err("管理员启动需要用户明确确认".to_string());
     }
-
-    #[cfg(not(target_os = "windows"))]
-    {
-        return Err("管理员启动仅支持 Windows".to_string());
-    }
-
-    Ok(())
+    let audit_id = audit::start_action("scene", "launch_admin", &app_path, confirmed)?;
+    let result = system::launch_as_admin(&app_path)
+        .map(|_| "已请求管理员启动".to_string())
+        .map_err(|error| format!("以管理员身份启动失败: {}", error));
+    audit::finish_action(
+        &audit_id,
+        "scene",
+        "launch_admin",
+        &app_path,
+        confirmed,
+        &result,
+    )?;
+    result.map(|_| ())
 }
