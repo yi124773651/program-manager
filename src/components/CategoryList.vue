@@ -112,7 +112,7 @@
         <button class="github-link" @click="openGitHub" title="GitHub">
           <GithubIcon :size="18" />
         </button>
-        <span class="version-text">v1.1.7</span>
+        <span class="version-text">v1.1.8</span>
       </div>
     </div>
     </template>
