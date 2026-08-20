@@ -112,7 +112,7 @@
         <button class="github-link" @click="openGitHub" title="GitHub">
           <GithubIcon :size="18" />
         </button>
-        <span class="version-text">v1.1.8</span>
+        <span class="version-text">v{{ appVersion }}</span>
       </div>
     </div>
     </template>
@@ -210,6 +210,9 @@ import MaintenancePanel from './MaintenancePanel.vue'
 import ClipboardHistory from './ClipboardHistory.vue'
 import SceneEditor from './SceneEditor.vue'
 import { shellAdapter } from '@/adapters/shellAdapter'
+
+// 版本号由构建期从 package.json 注入，避免硬编码遗漏
+const appVersion = __APP_VERSION__
 import { clipboardAdapter } from '@/adapters/clipboardAdapter'
 
 const appStore = useAppStore()

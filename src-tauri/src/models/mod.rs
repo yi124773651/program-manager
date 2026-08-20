@@ -141,6 +141,10 @@ pub struct AppSettings {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[serde(rename = "backgroundApiUrl")]
     pub background_api_url: Option<String>,
+    /// 用户在设置中显式授权过的图床域名；为空时仅允许内置默认域名。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "trustedImageHosts")]
+    pub trusted_image_hosts: Option<Vec<String>>,
 }
 
 impl Default for AppSettings {
@@ -170,6 +174,7 @@ impl Default for AppSettings {
             todo_shortcut: Some("Alt+T".to_string()),
             background_source: Some("local".to_string()),
             background_api_url: None,
+            trusted_image_hosts: None,
         }
     }
 }

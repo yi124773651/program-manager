@@ -140,8 +140,13 @@ onMounted(async () => {
   await appStore.init()
 
   // 如果背景来源为随机图床，启动时加载一次
+  // 启动路径不阻塞渲染；失败时保留上一次的背景图，仅记录原因
   if (appStore.settings.backgroundSource === 'api' && appStore.settings.backgroundApiUrl) {
-    appStore.loadApiBackground()
+    appStore.loadApiBackground().then(result => {
+      if (!result.ok) {
+        console.warn('启动时加载图床背景失败:', result.error)
+      }
+    })
   }
 
   // 初始化便签

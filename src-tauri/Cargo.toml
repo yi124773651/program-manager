@@ -1,6 +1,6 @@
 [package]
 name = "program-manager"
-version = "1.1.8"
+version = "1.1.9"
 description = "程序管理器"
 authors = ["you"]
 edition = "2021"
@@ -23,6 +23,10 @@ dirs = "5"
 base64 = "0.22"
 image = "0.24"
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+
+[dev-dependencies]
+# 仅用于 #[tokio::test]，运行标记 #[ignore] 的真实网络用例
+tokio = { version = "1", features = ["macros", "rt"] }
 
 [target.'cfg(windows)'.dependencies]
 winapi = { version = "0.3", features = [

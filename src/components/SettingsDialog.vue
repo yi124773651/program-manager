@@ -145,7 +145,7 @@
             <div class="setting-info">
               <div class="setting-label">图床地址</div>
               <div class="setting-desc">
-                支持 Picsum 或 Unsplash 图片地址，每次启动自动刷新
+                填入 HTTPS 图片地址，首次使用新域名时需确认授权；每次启动自动刷新
               </div>
             </div>
             <div class="setting-control api-bg-control">
@@ -163,6 +163,13 @@
               >
                 {{ apiBackgroundLoading ? '加载中...' : '刷新预览' }}
               </button>
+            </div>
+          </div>
+
+          <!-- 图床加载失败提示 -->
+          <div v-if="settings.backgroundSource === 'api' && apiBackgroundError" class="setting-item">
+            <div class="api-bg-error" :class="{ hint: apiBackgroundLoading }">
+              {{ apiBackgroundError }}
             </div>
           </div>
 
@@ -568,7 +575,7 @@
             <h3>关于</h3>
           </div>
           <div class="about-info">
-            <p><strong>程序管理器</strong> v1.1.8</p>
+            <p><strong>程序管理器</strong> v{{ appVersion }}</p>
             <p class="about-desc">一个现代化的 Windows 程序管理工具</p>
           </div>
         </section>
@@ -593,6 +600,9 @@ import { useNotesStore } from '@/stores/notesStore'
 import { useScenesStore } from '@/stores/scenesStore'
 import { useTodoStore } from '@/stores/todoStore'
 import { DEFAULT_THEME_COLORS, type AppSettings, type ThemePreset } from '@/types'
+
+// 版本号由构建期从 package.json 注入，避免硬编码遗漏
+const appVersion = __APP_VERSION__
 import { tauriAdapter, type LocalDataImportPreview, type LocalDataSection } from '@/adapters/tauriAdapter'
 import {
   canImportLocalData,
@@ -624,6 +634,7 @@ const showMaintenance = ref(false)
 
 // 图床加载状态
 const apiBackgroundLoading = ref(false)
+const apiBackgroundError = ref<string | null>(null)
 
 // 预设主题色
 const themeColors = DEFAULT_THEME_COLORS
@@ -807,7 +818,36 @@ const updateBackgroundSource = async (source: 'local' | 'api') => {
   }
 }
 
-// 更新图床 URL
+// 内置开箱可用的图床域名，需与 src-tauri/src/commands/network.rs 的 DEFAULT_IMAGE_HOSTS 保持一致
+const DEFAULT_IMAGE_HOSTS = ['picsum.photos', 'fastly.picsum.photos', 'images.unsplash.com']
+
+// 判断主机名是否为内网/环回地址，避免图床接口被当作探测内网的通道
+const isBlockedImageHost = (hostname: string): boolean => {
+  const host = hostname.replace(/^\[|\]$/g, '').toLowerCase()
+
+  if (host === 'localhost' || host.endsWith('.localhost')) return true
+  // IPv6 环回、未指定地址、唯一本地地址(fc00::/7)、链路本地(fe80::/10)
+  if (host === '::1' || host === '::') return true
+  if (/^f[cd][0-9a-f]{2}:/.test(host)) return true
+  if (/^fe[89ab][0-9a-f]:/.test(host)) return true
+
+  const ipv4 = host.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/)
+  if (!ipv4) return false
+
+  const parts = ipv4.slice(1).map(Number)
+  if (parts.some(part => part > 255)) return true
+
+  const [a, b] = parts
+  if (a === 127 || a === 0 || a === 10) return true
+  if (a === 172 && b >= 16 && b <= 31) return true
+  if (a === 192 && b === 168) return true
+  if (a === 169 && b === 254) return true       // 链路本地，含云 metadata
+  if (a === 100 && b >= 64 && b < 128) return true // 运营商级 NAT
+  if (a >= 224) return true                      // 多播与保留段
+  return false
+}
+
+// 更新图床 URL；非内置域名需用户显式授权后写入 trustedImageHosts
 const updateBackgroundApiUrl = async (url: string) => {
   const value = url.trim()
   if (!value) {
@@ -815,25 +855,65 @@ const updateBackgroundApiUrl = async (url: string) => {
     return
   }
 
+  let parsed: URL
   try {
-    const parsed = new URL(value)
-    const allowedHosts = new Set(['picsum.photos', 'fastly.picsum.photos', 'images.unsplash.com'])
-    if (parsed.protocol !== 'https:' || !allowedHosts.has(parsed.hostname) || parsed.username || parsed.password) {
-      throw new Error('仅支持 Picsum 或 Unsplash 的 HTTPS 图片地址')
-    }
-    await appStore.updateSettings({ backgroundApiUrl: parsed.toString() })
-  } catch (error) {
-    alert(String(error))
+    parsed = new URL(value)
+  } catch {
+    alert('图床地址格式无效，请填写完整的 HTTPS 网址')
+    return
   }
+
+  if (parsed.protocol !== 'https:') {
+    alert('图床地址必须使用 HTTPS')
+    return
+  }
+  if (parsed.username || parsed.password) {
+    alert('图床地址不能包含账号密码')
+    return
+  }
+  if (isBlockedImageHost(parsed.hostname)) {
+    alert('图床地址不能指向本机或内网地址')
+    return
+  }
+
+  const host = parsed.hostname.toLowerCase()
+  const trustedHosts = settings.value.trustedImageHosts || []
+  const alreadyAllowed =
+    DEFAULT_IMAGE_HOSTS.includes(host) ||
+    trustedHosts.some(trusted => trusted.toLowerCase() === host)
+
+  if (!alreadyAllowed) {
+    const confirmed = confirm(
+      `将允许本应用向 ${host} 发起图片请求。\n\n请确认这是你信任的图床域名。`
+    )
+    if (!confirmed) return
+
+    await appStore.updateSettings({
+      trustedImageHosts: [...trustedHosts, host],
+      backgroundApiUrl: parsed.toString()
+    })
+    return
+  }
+
+  await appStore.updateSettings({ backgroundApiUrl: parsed.toString() })
 }
 
-// 刷新图床背景
+// 刷新图床背景；失败原因必须展示，否则用户无法区分"没刷新"和"请求被拒"
 const refreshApiBackground = async () => {
   if (apiBackgroundLoading.value) return
   apiBackgroundLoading.value = true
+  apiBackgroundError.value = null
+  // 部分图床速度极慢（实测低至 10 KB/s），超过 8 秒时告知用户仍在下载而非卡死
+  const slowHintTimer = window.setTimeout(() => {
+    if (apiBackgroundLoading.value) {
+      apiBackgroundError.value = '图床响应较慢，正在下载中，请稍候…'
+    }
+  }, 8000)
   try {
-    await appStore.loadApiBackground()
+    const result = await appStore.loadApiBackground()
+    apiBackgroundError.value = result.ok ? null : result.error || '加载失败，原因未知'
   } finally {
+    window.clearTimeout(slowHintTimer)
     apiBackgroundLoading.value = false
   }
 }
@@ -1768,5 +1848,18 @@ button:disabled {
 .api-url-input::placeholder {
   color: var(--text-secondary);
   opacity: 0.6;
+}
+
+.api-bg-error {
+  width: 100%;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--danger-color);
+  word-break: break-all;
+}
+
+/* 下载中的等待提示不是错误，用次要文字色 */
+.api-bg-error.hint {
+  color: var(--text-secondary);
 }
 </style>

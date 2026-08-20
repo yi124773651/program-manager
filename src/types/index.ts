@@ -65,6 +65,7 @@ export interface AppSettings {
   windowOpacity?: number  // 窗口透明度 (0-1)
   backgroundSource?: 'local' | 'api'  // 背景图片来源，默认 'local'
   backgroundApiUrl?: string           // 随机图床 URL
+  trustedImageHosts?: string[]         // 用户显式授权过的图床域名
   // Quicker 效率工具设置
   quickerEnabled?: boolean  // 总开关
   globalShortcutEnabled?: boolean  // 全局快捷键唤起
@@ -124,6 +125,7 @@ export const DEFAULT_CONFIG: Config = {
     backgroundOpacity: 0.3,
     windowOpacity: 0.95,
     backgroundSource: 'local',
+    trustedImageHosts: [],
     // Quicker 效率工具默认设置
     quickerEnabled: true,
     globalShortcutEnabled: true,

@@ -358,19 +358,22 @@ export const useAppStore = defineStore('app', {
       )
     },
 
-    // 从随机图床加载背景图片
-    async loadApiBackground(): Promise<boolean> {
+    // 从随机图床加载背景图片；失败原因需回传给调用方展示，不能静默丢弃
+    async loadApiBackground(): Promise<{ ok: boolean; error?: string }> {
       const url = this.config.settings.backgroundApiUrl
-      if (!url) return false
+      if (!url) {
+        return { ok: false, error: '未配置图床地址' }
+      }
 
       try {
         const dataUrl = await configService.fetchImageAsBase64(url)
         this.config.settings.backgroundImage = dataUrl
         this.debouncedSaveConfig()
-        return true
+        return { ok: true }
       } catch (error) {
+        const message = error instanceof Error ? error.message : String(error)
         console.error('加载图床背景图片失败:', error)
-        return false
+        return { ok: false, error: message }
       }
     }
   }
