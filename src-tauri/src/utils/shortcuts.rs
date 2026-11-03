@@ -181,22 +181,7 @@ fn toggle_or_create_todo_window(app: &AppHandle) {
         return;
     }
 
-    let url = if cfg!(debug_assertions) {
-        WebviewUrl::External("http://localhost:1420/todo.html".parse().unwrap())
-    } else {
-        WebviewUrl::App("todo.html".into())
-    };
-
-    let _ = WebviewWindowBuilder::new(app, "todo", url)
-        .title("待办日程表")
-        .inner_size(820.0, 620.0)
-        .min_inner_size(680.0, 520.0)
-        .resizable(true)
-        .decorations(false)
-        .transparent(true)
-        .always_on_top(true)
-        .center()
-        .build();
+    show_or_create_todo_window(app);
 }
 
 pub fn show_or_create_todo_window(app: &AppHandle) {
@@ -215,8 +200,8 @@ pub fn show_or_create_todo_window(app: &AppHandle) {
 
     let _ = WebviewWindowBuilder::new(app, "todo", url)
         .title("待办日程表")
-        .inner_size(820.0, 620.0)
-        .min_inner_size(680.0, 520.0)
+        .inner_size(1180.0, 780.0)
+        .min_inner_size(760.0, 520.0)
         .resizable(true)
         .decorations(false)
         .transparent(true)

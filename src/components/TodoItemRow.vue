@@ -16,14 +16,14 @@
         <input v-model="draft.date" type="date" />
         <input v-model="draft.startTime" type="time" step="900" />
         <span class="time-divider">至</span>
-        <input v-model="draft.endTime" type="time" step="900" />
+        <TodoEndTimeInput v-model="draft.endTime" />
       </div>
       <textarea v-model="draft.description" rows="2" maxlength="200" placeholder="补充任务说明" />
     </div>
 
     <div class="todo-actions">
-      <button class="link-btn" type="button" @click="editing ? save() : (editing = true)">
-        {{ editing ? '保存' : '编辑' }}
+      <button class="link-btn" type="button" :disabled="saving" @click="editing ? save() : (editing = true)">
+        {{ saving ? '保存中…' : editing ? '保存' : '编辑' }}
       </button>
       <button class="link-btn danger" type="button" @click="$emit('remove')">删除</button>
     </div>
@@ -33,18 +33,20 @@
 <script setup lang="ts">
 import { computed, reactive, ref, watch } from 'vue'
 import type { TodoInput, TodoItem } from '@/types/todo'
+import TodoEndTimeInput from './TodoEndTimeInput.vue'
 
 const props = defineProps<{
   item: TodoItem
   highlighted?: boolean
+  saveTodo: (payload: Partial<TodoInput>) => Promise<boolean>
 }>()
 
-const emit = defineEmits<{
+defineEmits<{
   toggle: []
   remove: []
-  save: [payload: Partial<TodoInput>]
 }>()
 const editing = ref(false)
+const saving = ref(false)
 const timeLabel = computed(() => {
   if (props.item.startTime && props.item.endTime) {
     return `${props.item.startTime} - ${props.item.endTime}`
@@ -77,15 +79,18 @@ watch(() => props.item, (item) => {
   draft.description = item.description ?? ''
 }, { deep: true })
 
-const save = () => {
-  editing.value = false
-  emit('save', {
-    title: draft.title,
-    date: draft.date,
-    startTime: draft.startTime || undefined,
-    endTime: draft.endTime || undefined,
-    description: draft.description
-  })
+const save = async () => {
+  saving.value = true
+  try {
+    const saved = await props.saveTodo({
+      title: draft.title,
+      date: draft.date,
+      startTime: draft.startTime || undefined,
+      endTime: draft.endTime || undefined,
+      description: draft.description
+    })
+    if (saved) editing.value = false
+  } finally { saving.value = false }
 }
 </script>
 

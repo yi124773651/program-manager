@@ -191,6 +191,8 @@ async function initRequiredStores(source: SearchSource, settings: AppSettings) {
       const todoStore = useTodoStore()
       if (!todoStore.initialized) {
         initJobs.push(todoStore.init())
+      } else {
+        initJobs.push(todoStore.loadFromStorage())
       }
     }
   }
@@ -405,7 +407,7 @@ async function openTodoResult(todoId: string, date: string) {
   await todoStore.init()
 
   if (getCurrentWindow().label === 'todo') {
-    todoStore.setSelectedDate(date)
+    await emitTo('todo', 'select-todo', { todoId, date })
     return
   }
 

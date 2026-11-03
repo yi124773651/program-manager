@@ -72,6 +72,30 @@ pub struct Category {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default, rename_all = "camelCase")]
+pub struct TodoScheduleSettings {
+    pub work_days: Vec<u8>,
+    pub work_start: String,
+    pub work_end: String,
+    pub snap_minutes: u32,
+    pub lunch_start: String,
+    pub lunch_end: String,
+}
+
+impl Default for TodoScheduleSettings {
+    fn default() -> Self {
+        Self {
+            work_days: vec![1, 2, 3, 4, 5],
+            work_start: "09:00".to_string(),
+            work_end: "18:00".to_string(),
+            snap_minutes: 30,
+            lunch_start: "12:00".to_string(),
+            lunch_end: "13:00".to_string(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct AppSettings {
     #[serde(rename = "cardSize")]
@@ -135,6 +159,8 @@ pub struct AppSettings {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[serde(rename = "todoShortcut")]
     pub todo_shortcut: Option<String>,
+    #[serde(rename = "todoSchedule")]
+    pub todo_schedule: TodoScheduleSettings,
     #[serde(skip_serializing_if = "Option::is_none")]
     #[serde(rename = "backgroundSource")]
     pub background_source: Option<String>,
@@ -172,6 +198,7 @@ impl Default for AppSettings {
             calculator_enabled: Some(true),
             todo_schedule_enabled: Some(true),
             todo_shortcut: Some("Alt+T".to_string()),
+            todo_schedule: TodoScheduleSettings::default(),
             background_source: Some("local".to_string()),
             background_api_url: None,
             trusted_image_hosts: None,
@@ -228,5 +255,25 @@ mod tests {
         let json = serde_json::to_value(Config::default()).expect("默认配置应能序列化");
 
         assert_eq!(json["settings"]["themePreset"].as_str(), Some("fresh-dawn"));
+    }
+
+    #[test]
+    fn 旧配置补齐日程设置且自定义设置往返不丢失() {
+        let settings: AppSettings = serde_json::from_str("{}").expect("旧设置应能读取");
+        assert_eq!(settings.todo_schedule.work_days, vec![1, 2, 3, 4, 5]);
+        assert_eq!(settings.todo_schedule.work_start, "09:00");
+        assert_eq!(settings.todo_schedule.work_end, "18:00");
+        assert_eq!(settings.todo_schedule.snap_minutes, 30);
+
+        let custom = serde_json::json!({
+            "todoSchedule": {
+                "workDays": [0, 6], "workStart": "08:15", "workEnd": "16:45",
+                "snapMinutes": 60, "lunchStart": "11:30", "lunchEnd": "12:30"
+            }
+        });
+        let loaded: AppSettings =
+            serde_json::from_value(custom.clone()).expect("自定义日程应能读取");
+        let saved = serde_json::to_value(loaded).expect("日程应能保存");
+        assert_eq!(saved["todoSchedule"], custom["todoSchedule"]);
     }
 }

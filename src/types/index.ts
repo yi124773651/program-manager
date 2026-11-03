@@ -1,4 +1,5 @@
 import type { ManagedItemType } from './itemSupport'
+import { DEFAULT_TODO_SCHEDULE, type TodoScheduleSettings } from './todo'
 
 export * from './todo'
 export * from './itemSupport'
@@ -82,6 +83,7 @@ export interface AppSettings {
   // 待办日程表
   todoScheduleEnabled?: boolean  // 待办日程表开关
   todoShortcut?: string  // 待办日程表快捷键（默认 Alt+T）
+  todoSchedule?: TodoScheduleSettings  // 时间块工作时段与午饭预设
 }
 
 // 完整配置
@@ -141,7 +143,8 @@ export const DEFAULT_CONFIG: Config = {
     calculatorEnabled: true,
     // 待办日程表默认设置
     todoScheduleEnabled: true,
-    todoShortcut: 'Alt+T'
+    todoShortcut: 'Alt+T',
+    todoSchedule: { ...DEFAULT_TODO_SCHEDULE, workDays: [...DEFAULT_TODO_SCHEDULE.workDays] }
   }
 }
 

@@ -359,6 +359,8 @@
             </div>
           </div>
 
+          <TodoScheduleSettings />
+
           <!-- 快捷键配置 -->
           <div class="shortcut-panel" :class="{ disabled: settings.quickerEnabled === false }">
             <div class="shortcut-panel-header">
@@ -622,6 +624,7 @@ import {
   type ShortcutField
 } from '@/services/shortcutService'
 import MaintenancePanel from './MaintenancePanel.vue'
+import TodoScheduleSettings from './TodoScheduleSettings.vue'
 import { normalizeThemePreset, THEME_PRESET_META, THEME_PRESETS } from '@/services/themeService'
 
 defineEmits(['close'])

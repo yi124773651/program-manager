@@ -6,11 +6,13 @@
         <p>{{ selectedDateLabel }}</p>
       </div>
       <div class="header-actions" style="app-region: no-drag;" @mousedown.stop>
+        <button class="icon-btn" :disabled="!!todoStore.replanDraft" :class="{ active: view === 'list' }" @click="view = 'list'">列表</button>
+        <button class="icon-btn" :class="{ active: view === 'timeline' }" @click="view = 'timeline'">时间轴</button>
         <button class="icon-btn" type="button" @click.stop="focusQuickAdd">新建</button>
         <button
           class="icon-btn"
           type="button"
-          :disabled="!hasPastRecords || clearingHistory"
+          :disabled="!hasPastRecords || clearingHistory || !!todoStore.replanDraft"
           @click.stop="clearBeforeTodayRecords"
         >
           {{ clearingHistory ? '清理中' : '清理历史' }}
@@ -55,7 +57,7 @@
         </div>
       </aside>
 
-      <section class="content-panel">
+      <section class="content-panel" :class="{ 'timeline-view': view === 'timeline' }">
         <form class="quick-add" @submit.prevent="submitTodo">
           <input
             ref="quickInputRef"
@@ -66,7 +68,7 @@
           <button type="button" class="detail-btn" @click="showDetails = !showDetails">
             {{ showDetails ? '收起详情' : '展开详情' }}
           </button>
-          <button type="submit" class="submit-btn" :disabled="!form.title.trim()">添加</button>
+          <button type="submit" class="submit-btn" :disabled="!form.title.trim() || todoStore.saving">添加</button>
         </form>
 
         <div v-if="showDetails" class="detail-fields">
@@ -79,7 +81,7 @@
             <div class="time-range-fields">
               <input v-model="form.startTime" type="time" step="900" />
               <span class="time-range-separator">至</span>
-              <input v-model="form.endTime" type="time" step="900" />
+              <TodoEndTimeInput v-model="form.endTime" />
               <button type="button" class="detail-btn secondary-btn" @click="clearTimeRange">清空</button>
             </div>
           </div>
@@ -94,10 +96,13 @@
           </label>
         </div>
 
-        <div v-if="formMessage" class="form-message" :class="{ error: !!formError }">
+        <div v-if="formMessage" class="form-message" :class="{ error: !!formError || !!todoStore.lastError }" role="status">
           {{ formMessage }}
+          <button v-if="todoStore.loadFailed" class="detail-btn" :disabled="todoStore.saving" @click="todoStore.loadFromStorage()">重新加载</button>
         </div>
 
+        <TodoTimeline v-if="view === 'timeline'" :highlighted-id="highlightedTodoId" />
+        <template v-else>
         <div
           v-if="!overdueTodos.length && !selectedDateTodos.length && !completedTodos.length"
           class="empty-state"
@@ -116,7 +121,7 @@
               :highlighted="highlightedTodoId === item.id"
               @toggle="todoStore.toggleTodo(item.id)"
               @remove="todoStore.deleteTodo(item.id)"
-              @save="todoStore.updateTodo(item.id, $event)"
+              :save-todo="patch => todoStore.updateTodo(item.id, patch)"
             />
           </section>
 
@@ -130,7 +135,7 @@
               :highlighted="highlightedTodoId === item.id"
               @toggle="todoStore.toggleTodo(item.id)"
               @remove="todoStore.deleteTodo(item.id)"
-              @save="todoStore.updateTodo(item.id, $event)"
+              :save-todo="patch => todoStore.updateTodo(item.id, patch)"
             />
           </section>
 
@@ -146,10 +151,11 @@
                 :highlighted="highlightedTodoId === item.id"
                 @toggle="todoStore.toggleTodo(item.id)"
                 @remove="todoStore.deleteTodo(item.id)"
-                @save="todoStore.updateTodo(item.id, $event)"
+                :save-todo="patch => todoStore.updateTodo(item.id, patch)"
               />
             </div>
           </section>
+        </template>
         </template>
       </section>
     </div>
@@ -167,6 +173,8 @@ import { useTodoStore } from '@/stores/todoStore'
 import { useAppStore } from '@/stores/appStore'
 import { getTodayDateKey } from '@/types/todo'
 import TodoItemRow from '@/components/TodoItemRow.vue'
+import TodoTimeline from '@/components/TodoTimeline.vue'
+import TodoEndTimeInput from '@/components/TodoEndTimeInput.vue'
 import { applyThemeSettings } from '@/services/themeService'
 
 const weekdays = ['日', '一', '二', '三', '四', '五', '六']
@@ -192,6 +200,7 @@ const todoStore = useTodoStore()
 const appStore = useAppStore()
 const { items, selectedDate, overdueTodos, selectedDateTodos, completedTodos } = storeToRefs(todoStore)
 const showCompleted = ref(false)
+const view = ref<'list' | 'timeline'>('timeline')
 const showDetails = ref(false)
 const closing = ref(false)
 const clearingHistory = ref(false)
@@ -259,10 +268,10 @@ const calendarDays = computed(() => {
 })
 
 const hasPastRecords = computed(() => {
-  return items.value.some((item) => item.date < todayKey.value)
+  return items.value.some((item) => item.date < todayKey.value && (item.completed || item.splitFrom))
 })
 
-const formMessage = computed(() => formError.value || historyMessage.value)
+const formMessage = computed(() => formError.value || todoStore.lastError || historyMessage.value)
 
 const syncFormDate = () => {
   form.value.date = selectedDate.value
@@ -273,7 +282,7 @@ const clearTimeRange = () => {
   form.value.endTime = ''
 }
 
-const submitTodo = () => {
+const submitTodo = async () => {
   if (!form.value.title.trim()) return
   formError.value = ''
   historyMessage.value = ''
@@ -288,13 +297,14 @@ const submitTodo = () => {
     return
   }
 
-  todoStore.addTodo({
+  const id = await todoStore.addTodo({
     title: form.value.title,
     date: form.value.date || selectedDate.value,
     startTime: form.value.startTime || undefined,
     endTime: form.value.endTime || undefined,
     description: form.value.description
   })
+  if (!id) { formError.value = todoStore.lastError; return }
 
   form.value.title = ''
   form.value.startTime = ''
@@ -316,8 +326,11 @@ const focusQuickAdd = () => {
 }
 
 const selectTodoFromSearch = async (todoId: string, date: string) => {
+  if (todoStore.replanDraft) { formError.value = '请先确认或取消当前重排，再定位搜索结果。'; return }
+  await todoStore.loadFromStorage()
   const target = todoStore.items.find((item) => item.id === todoId)
   todoStore.setSelectedDate(target?.date || date)
+  view.value = 'timeline'
 
   if (target?.completed) {
     showCompleted.value = true
@@ -327,7 +340,7 @@ const selectTodoFromSearch = async (todoId: string, date: string) => {
   if (highlightTimer) clearTimeout(highlightTimer)
 
   await nextTick()
-  const targetElement = document.querySelector(`[data-todo-id="${todoId}"]`)
+  const targetElement = document.querySelector(`[data-todo-id="${CSS.escape(todoId)}"]`)
   targetElement?.scrollIntoView({ block: 'center', behavior: 'smooth' })
 
   highlightTimer = setTimeout(() => {
@@ -344,14 +357,14 @@ const clearBeforeTodayRecords = async () => {
   clearingHistory.value = true
 
   try {
-    const confirmed = await ask('确定清除今天之前已完成的待办记录吗？未完成的待办将保留。此操作不可撤销。', {
+    const confirmed = await ask('确定清除今天之前已完成的待办和已过去的重排片段吗？未完成事项及运行中的计时将保留。此操作不可撤销。', {
       title: '清理历史记录',
       kind: 'warning'
     })
 
     if (!confirmed) return
 
-    const cleared = todoStore.clearBeforeToday()
+    const cleared = await todoStore.clearBeforeToday()
     historyMessage.value = cleared > 0 ? `已清理 ${cleared} 条历史记录。` : '没有可清理的历史记录。'
   } finally {
     clearingHistory.value = false
@@ -410,15 +423,15 @@ watch(() => [
 }, { immediate: true })
 
 onMounted(async () => {
+  selectTodoUnlisten = await listen<{ todoId: string; date: string }>('select-todo', async (event) => {
+    await selectTodoFromSearch(event.payload.todoId, event.payload.date)
+  })
   await appStore.init()
   await todoStore.init()
   syncFormDate()
   quickInputRef.value?.focus()
   document.addEventListener('keydown', handleKeydown)
 
-  selectTodoUnlisten = await listen<{ todoId: string; date: string }>('select-todo', async (event) => {
-    await selectTodoFromSearch(event.payload.todoId, event.payload.date)
-  })
 })
 
 onBeforeUnmount(() => {
@@ -557,6 +570,13 @@ onBeforeUnmount(() => {
   flex-direction: column;
   gap: 16px;
   overflow-y: auto;
+}
+
+.content-panel.timeline-view { overflow-y: auto; }
+@media (max-width: 1050px) {
+  .calendar-panel { flex-basis: 190px; padding: 10px; }
+  .content-panel { padding: 10px; gap: 10px; }
+  .quick-day { padding: 6px; }
 }
 
 .quick-add,

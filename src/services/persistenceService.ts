@@ -11,15 +11,17 @@ const LEGACY_STORAGE_KEYS: Record<PersistedDataType, string> = {
 const canUseLocalStorage = () => typeof localStorage !== 'undefined'
 
 export const persistenceService = {
-  async load<T>(dataType: PersistedDataType, fallback: T): Promise<T> {
+  async load<T>(dataType: PersistedDataType, fallback: T, options: { strict?: boolean } = {}): Promise<T> {
     try {
       const envelope = await tauriAdapter.readPersistedData<T>(dataType)
       if (envelope) return envelope.data
     } catch (error) {
+      // 日程包含计时与重排，读取失败时不能用空列表覆盖已有文件。
+      if (options.strict) throw error
       console.error(`读取 ${dataType} 文件失败，尝试旧本地存储:`, error)
     }
 
-    return this.loadLegacy(dataType, fallback)
+    return this.loadLegacy(dataType, fallback, options)
   },
 
   async save<T>(dataType: PersistedDataType, data: T): Promise<void> {
@@ -35,13 +37,14 @@ export const persistenceService = {
     return tauriAdapter.backupPersistedData(dataType, reason)
   },
 
-  loadLegacy<T>(dataType: PersistedDataType, fallback: T): T {
+  loadLegacy<T>(dataType: PersistedDataType, fallback: T, options: { strict?: boolean } = {}): T {
     if (!canUseLocalStorage()) return fallback
 
     try {
       const raw = localStorage.getItem(LEGACY_STORAGE_KEYS[dataType])
       return raw ? JSON.parse(raw) as T : fallback
     } catch (error) {
+      if (options.strict) throw error
       console.error(`读取 ${dataType} 旧本地存储失败:`, error)
       return fallback
     }

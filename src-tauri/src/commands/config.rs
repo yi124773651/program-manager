@@ -10,6 +10,11 @@ use tauri::{AppHandle, Emitter, State};
 const LOCAL_STORAGE_MIGRATION_ID: &str = "local-storage-to-json-v1";
 
 #[tauri::command]
+pub fn create_todo_id() -> String {
+    uuid::Uuid::new_v4().to_string()
+}
+
+#[tauri::command]
 pub fn load_config(state: State<AppState>) -> Result<Config, String> {
     let config = state.config.lock().unwrap();
     Ok(config.clone())

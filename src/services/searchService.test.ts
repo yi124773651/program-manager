@@ -9,6 +9,7 @@ import { DEFAULT_CONFIG, type App, type Config, type Scene } from '@/types'
 import type { ClipboardItem } from '@/types'
 import type { TodoItem } from '@/types/todo'
 import { parseSearchQuery, searchService } from './searchService'
+import { invoke } from '@tauri-apps/api/core'
 
 vi.mock('@tauri-apps/api/core', () => ({
   invoke: vi.fn(),
@@ -113,6 +114,7 @@ describe('searchService', () => {
     const todoStore = useTodoStore()
     todoStore.items = [todoItem]
     todoStore.initialized = true
+    vi.mocked(invoke).mockImplementation(async (command) => command === 'read_persisted_data' ? { schemaVersion: 1, updatedAt: 1, data: { items: [todoItem] } } : undefined)
   })
 
   it('会解析网页、剪贴板、便签、待办和场景前缀', () => {

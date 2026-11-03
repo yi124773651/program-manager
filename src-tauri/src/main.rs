@@ -52,6 +52,7 @@ fn main() {
         })
         .invoke_handler(tauri::generate_handler![
             load_config,
+            create_todo_id,
             save_config,
             add_category,
             add_app,
